@@ -1,6 +1,6 @@
-# 73.com.uy
+# seventhree.dev
 
-Landing page for the apps published under `73.com.uy`. React + TypeScript + Vite,
+Landing page for the apps published under `seventhree.dev`. React + TypeScript + Vite,
 deployed to GitHub Pages.
 
 ## Local development
@@ -61,14 +61,14 @@ publishes `dist/` to GitHub Pages.
 One-time setup in the GitHub repository:
 
 1. **Settings → Pages → Build and deployment → Source**: select `GitHub Actions`.
-2. **Settings → Pages → Custom domain**: enter `73.com.uy` and save.
+2. **Settings → Pages → Custom domain**: enter `seventhree.dev` and save.
 3. Wait for the DNS check to pass, then tick **Enforce HTTPS**.
 
 `public/CNAME` keeps the custom domain configured across deployments.
 
 ## DNS
 
-At the registrar for `73.com.uy`, point the apex domain at GitHub Pages:
+At Namecheap, point the apex of `seventhree.dev` at GitHub Pages:
 
 | Type | Name | Value           |
 | ---- | ---- | --------------- |
@@ -77,8 +77,13 @@ At the registrar for `73.com.uy`, point the apex domain at GitHub Pages:
 | A    | `@`  | `185.199.110.153` |
 | A    | `@`  | `185.199.111.153` |
 
-Optionally add `CNAME www → <username>.github.io.` so `www.73.com.uy` redirects
+Add `CNAME www → pollingermaxi.github.io.` so `www.seventhree.dev` redirects
 to the apex domain.
+
+`73.com.uy` is served by a separate repository that redirects to this one.
+
+Note that `.dev` is on the HSTS preload list: browsers refuse plain HTTP for it, so
+the domain is unreachable until GitHub finishes issuing the certificate.
 
 DNS propagation plus GitHub's certificate issuance usually takes from a few
 minutes up to a few hours.

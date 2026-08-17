@@ -1,7 +1,7 @@
 import { Link, Outlet } from 'react-router-dom'
 
 const SITE_NAME = '73'
-const SITE_DOMAIN = '73.com.uy'
+const SITE_DOMAIN = 'seventhree.dev'
 
 export function SiteLayout() {
   return (
