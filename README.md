@@ -26,6 +26,33 @@ Everything on the site is generated from `src/domain/appCatalog.ts`. Add an entr
 there and both the home page card and its detail page appear automatically. Set
 `download` once the app is published to add a download button.
 
+## Logo and HDR assets
+
+The vector master is `design/logo-options/05c-iso-specular.svg`, also used directly
+as `public/favicon.svg`. Alternative concepts and their design notes live alongside
+it in `design/logo-options/`.
+
+`public/logo-73.jpg` (header) and `public/og-image.jpg` (link previews) are
+**Ultra HDR gain-map JPEGs**. Each carries an ordinary SDR image plus a gain map
+describing how much brighter each pixel should render, so the white speculars glow
+on an HDR display in Chrome while every other viewer sees the plain base image.
+
+CSS cannot produce this effect: Chrome supports `dynamic-range-limit` but not the
+`rec2100` colour spaces, so CSS colours cannot exceed SDR white. The brightness has
+to come from the image encoding, which is why the mark is a raster rather than
+inline SVG. The header CSS sets `dynamic-range-limit: no-limit` so Chrome applies
+the gain map at full headroom instead of tone-mapping it down.
+
+The mark's background is baked to `--color-background` (`#0d1117`) because JPEG has
+no alpha — if that variable changes, regenerate the asset.
+
+Regenerating (requires `librsvg`, `imagemagick` and `libultrahdr` from Homebrew):
+
+```bash
+rsvg-convert -w 256 -h 256 -b '#0d1117' design/logo-options/05c-iso-specular.svg -o /tmp/mark.png
+node scripts/make-hdr-asset.mjs /tmp/mark.png 256 256 public/logo-73.jpg
+```
+
 ## Deployment
 
 Pushing to `main` triggers `.github/workflows/deploy.yml`, which builds and

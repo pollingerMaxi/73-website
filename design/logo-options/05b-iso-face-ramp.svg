@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none" role="img" aria-label="73"><style>
+:where(.iso-face-ramp-spec) { fill: color(display-p3 1 1 1); }
+:where(.iso-face-ramp-spec-stop) { stop-color: color(display-p3 1 1 1); }
+</style>
+<defs>
+<g id="iso-face-ramp-glyphs">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z"/>
+</g>
+<linearGradient id="iso-face-ramp-face" gradientUnits="userSpaceOnUse" x1="34" y1="30" x2="222" y2="222">
+<stop offset="0" stop-color="#a9c9ff" style="stop-color: color(display-p3 0.67 0.79 1)"/>
+<stop offset="0.38" stop-color="#4f8cff" style="stop-color: color(display-p3 0.28 0.54 1)"/>
+<stop offset="1" stop-color="#20489e" style="stop-color: color(display-p3 0.07 0.27 0.65)"/>
+</linearGradient>
+<linearGradient id="iso-face-ramp-gloss" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+<stop offset="0.30" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+<stop offset="0.34" class="shine iso-face-ramp-spec-stop" stop-color="#ffffff" stop-opacity="0.52"/>
+<stop offset="0.58" class="shine iso-face-ramp-spec-stop" stop-color="#ffffff" stop-opacity="0.24"/>
+<stop offset="0.63" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+<stop offset="1" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<clipPath id="iso-face-ramp-face-clip">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)"/>
+</clipPath>
+<linearGradient id="iso-face-ramp-key-falloff" gradientUnits="userSpaceOnUse" x1="70" y1="25" x2="210" y2="235">
+<stop offset="0" stop-color="#ffffff"/>
+<stop offset="0.5" stop-color="#d2d2d2"/>
+<stop offset="1" stop-color="#8a8a8a"/>
+</linearGradient>
+<mask id="iso-face-ramp-key-mask">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="url(#iso-face-ramp-key-falloff)"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="url(#iso-face-ramp-key-falloff)"/>
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(4.5 4.5) translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="#000000"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(4.5 4.5) translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="#000000"/>
+</mask>
+</defs>
+<g transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)">
+<use href="#iso-face-ramp-glyphs" transform="translate(18.72 13.52)" fill="#0c1c4a" style="fill: color(display-p3 0.0384 0.09936 0.3074)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(18.00 13.00)" fill="#0d1d4e" style="fill: color(display-p3 0.041024 0.106426 0.32224)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(17.28 12.48)" fill="#0e1f51" style="fill: color(display-p3 0.043648 0.113491 0.33708)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(16.56 11.96)" fill="#0f2155" style="fill: color(display-p3 0.046272 0.120557 0.35192)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(15.84 11.44)" fill="#102358" style="fill: color(display-p3 0.048896 0.127622 0.36676)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(15.12 10.92)" fill="#10255c" style="fill: color(display-p3 0.05152 0.134688 0.3816)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(14.40 10.40)" fill="#11275f" style="fill: color(display-p3 0.054144 0.141754 0.39644)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(13.68 9.88)" fill="#122963" style="fill: color(display-p3 0.056768 0.148819 0.41128)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(12.96 9.36)" fill="#132b67" style="fill: color(display-p3 0.059392 0.155885 0.42612)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(12.24 8.84)" fill="#142d6a" style="fill: color(display-p3 0.062016 0.16295 0.44096)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(11.52 8.32)" fill="#152f6e" style="fill: color(display-p3 0.06464 0.170016 0.4558)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(10.80 7.80)" fill="#153171" style="fill: color(display-p3 0.067264 0.177082 0.47064)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(10.08 7.28)" fill="#163375" style="fill: color(display-p3 0.069888 0.184147 0.48548)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(9.36 6.76)" fill="#173578" style="fill: color(display-p3 0.072512 0.191213 0.50032)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(8.64 6.24)" fill="#18377c" style="fill: color(display-p3 0.075136 0.198278 0.51516)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(7.92 5.72)" fill="#193980" style="fill: color(display-p3 0.07776 0.205344 0.53)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(7.20 5.20)" fill="#1a3b83" style="fill: color(display-p3 0.080384 0.21241 0.54484)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(6.48 4.68)" fill="#1a3d87" style="fill: color(display-p3 0.083008 0.219475 0.55968)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(5.76 4.16)" fill="#1b3f8a" style="fill: color(display-p3 0.085632 0.226541 0.57452)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(5.04 3.64)" fill="#1c418e" style="fill: color(display-p3 0.088256 0.233606 0.58936)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(4.32 3.12)" fill="#1d4391" style="fill: color(display-p3 0.09088 0.240672 0.6042)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(3.60 2.60)" fill="#1e4595" style="fill: color(display-p3 0.093504 0.247738 0.61904)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(2.88 2.08)" fill="#1f4798" style="fill: color(display-p3 0.096128 0.254803 0.63388)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(2.16 1.56)" fill="#1f499c" style="fill: color(display-p3 0.098752 0.261869 0.64872)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(1.44 1.04)" fill="#204ba0" style="fill: color(display-p3 0.101376 0.268934 0.66356)"/>
+<use href="#iso-face-ramp-glyphs" transform="translate(0.72 0.52)" fill="#214ca3" style="fill: color(display-p3 0.104 0.276 0.6784)"/>
+<use href="#iso-face-ramp-glyphs" fill="url(#iso-face-ramp-face)"/>
+</g>
+<g clip-path="url(#iso-face-ramp-face-clip)">
+<rect id="iso-face-ramp-shine-gloss" class="iso-face-ramp-spec-band" x="-200" y="69" width="656" height="86" transform="rotate(-45 128 128)" fill="url(#iso-face-ramp-gloss)"/>
+</g>
+<g mask="url(#iso-face-ramp-key-mask)">
+<path id="iso-face-ramp-shine-key-seven" class="shine iso-face-ramp-spec" d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="#ffffff"/>
+<path id="iso-face-ramp-shine-key-three" class="shine iso-face-ramp-spec" d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="#ffffff"/>
+</g></svg>

@@ -62,20 +62,19 @@ a:hover {
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-sm);
+  align-items: center;
   color: var(--color-text);
 }
 
+/* The mark is an Ultra HDR gain-map JPEG: on an HDR display its speculars
+   render brighter than page white, and everywhere else the plain base image
+   shows. Its backdrop is baked to --color-background, so it must sit on that. */
 .brand-mark {
-  font-size: 1.6rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.brand-domain {
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
+  display: block;
+  width: 100px;
+  height: 100px;
+  border-radius: 12px;
+  dynamic-range-limit: no-limit;
 }
 
 .site-nav {

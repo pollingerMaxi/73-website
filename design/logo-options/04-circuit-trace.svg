@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none" role="img" aria-label="73"><defs>
+<linearGradient id="circuit-trace-ramp" gradientUnits="userSpaceOnUse" x1="30" y1="208" x2="226" y2="48">
+<stop offset="0" stop-color="#4ef0a0" style="stop-color: color(display-p3 0.28 0.95 0.62)"/>
+<stop offset="0.55" stop-color="#22d3ee" style="stop-color: color(display-p3 0.05 0.86 0.96)"/>
+<stop offset="1" stop-color="#4f8cff" style="stop-color: color(display-p3 0.28 0.54 1)"/>
+</linearGradient>
+<linearGradient id="circuit-trace-specular" gradientUnits="userSpaceOnUse" x1="26" y1="216" x2="230" y2="40">
+<stop offset="0.26" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+<stop offset="0.46" stop-color="#b8f2ff" style="stop-color: color(display-p3 0.74 0.96 1)" stop-opacity="0.6"/>
+<stop offset="0.54" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.8"/>
+<stop offset="0.74" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<filter id="circuit-trace-glow" x="-40%" y="-40%" width="180%" height="180%">
+<feGaussianBlur stdDeviation="6"/>
+</filter>
+<mask id="circuit-trace-drill">
+<rect x="0" y="0" width="256" height="256" fill="#ffffff" style="fill: color(display-p3 1 1 1)"/>
+<circle cx="41" cy="59" r="8.5" fill="#000000" style="fill: color(display-p3 0 0 0)"/>
+<circle cx="68" cy="197" r="8.5" fill="#000000" style="fill: color(display-p3 0 0 0)"/>
+<circle cx="149" cy="59" r="8.5" fill="#000000" style="fill: color(display-p3 0 0 0)"/>
+<circle cx="149" cy="197" r="8.5" fill="#000000" style="fill: color(display-p3 0 0 0)"/>
+<circle cx="179" cy="131" r="8.5" fill="#000000" style="fill: color(display-p3 0 0 0)"/>
+</mask>
+<g id="circuit-trace-routes" fill="none" stroke-width="22" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="6">
+<path d="M41 59H107L68 197"/>
+<path d="M149 59H204L215 70V95L179 131L215 167V186L204 197H149"/>
+</g>
+</defs>
+<g fill="none" stroke="#4ef0a0" style="stroke: color(display-p3 0.28 0.95 0.62)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.16">
+<path d="M-10 96H24L60 132" /><path d="M272 158H236L206 128" /><path d="M14 220L46 220L86 260" /><path d="M252 32H222L196 6" />
+</g>
+<g id="circuit-trace-shine-glow" class="shine" filter="url(#circuit-trace-glow)" opacity="0.42">
+<use href="#circuit-trace-routes" stroke="#22d3ee" style="stroke: color(display-p3 0.05 0.86 0.96)"/>
+</g>
+<g mask="url(#circuit-trace-drill)">
+<use href="#circuit-trace-routes" stroke="url(#circuit-trace-ramp)"/>
+<circle cx="41" cy="59" r="19" fill="url(#circuit-trace-ramp)"/>
+<circle cx="68" cy="197" r="19" fill="url(#circuit-trace-ramp)"/>
+<circle cx="149" cy="59" r="19" fill="url(#circuit-trace-ramp)"/>
+<circle cx="149" cy="197" r="19" fill="url(#circuit-trace-ramp)"/>
+<circle cx="179" cy="131" r="19" fill="url(#circuit-trace-ramp)"/>
+</g>
+<g id="circuit-trace-shine-specular" class="shine" mask="url(#circuit-trace-drill)">
+<use href="#circuit-trace-routes" stroke="url(#circuit-trace-specular)" stroke-width="6"/>
+</g></svg>

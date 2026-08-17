@@ -8,8 +8,13 @@ export function SiteLayout() {
     <div className="site">
       <header className="site-header">
         <Link to="/" className="brand">
-          <span className="brand-mark">{SITE_NAME}</span>
-          <span className="brand-domain">{SITE_DOMAIN}</span>
+          <img
+            className="brand-mark"
+            src="/logo-73.jpg"
+            alt={SITE_NAME}
+            width={100}
+            height={100}
+          />
         </Link>
         <nav className="site-nav">
           <Link to="/">Apps</Link>

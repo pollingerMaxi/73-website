@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none" role="img" aria-label="73"><defs>
+<linearGradient id="chamfer-cut-upper" gradientUnits="userSpaceOnUse" x1="30" y1="34" x2="200" y2="150">
+<stop offset="0" stop-color="#b8f2ff" style="stop-color: color(display-p3 0.74 0.96 1)"/>
+<stop offset="0.35" stop-color="#7fb2ff" style="stop-color: color(display-p3 0.5 0.71 1)"/>
+<stop offset="1" stop-color="#4f8cff" style="stop-color: color(display-p3 0.28 0.54 1)"/>
+</linearGradient>
+<linearGradient id="chamfer-cut-lower" gradientUnits="userSpaceOnUse" x1="60" y1="110" x2="232" y2="228">
+<stop offset="0" stop-color="#4f8cff" style="stop-color: color(display-p3 0.28 0.54 1)"/>
+<stop offset="0.55" stop-color="#2b5fe0" style="stop-color: color(display-p3 0.1 0.34 0.95)"/>
+<stop offset="1" stop-color="#3b1d8a" style="stop-color: color(display-p3 0.19 0.08 0.56)"/>
+</linearGradient>
+<linearGradient id="chamfer-cut-kerf-lip" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+<stop offset="0.55" stop-color="#b8f2ff" style="stop-color: color(display-p3 0.74 0.96 1)" stop-opacity="0.45"/>
+<stop offset="1" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.95"/>
+</linearGradient>
+<linearGradient id="chamfer-cut-kerf-bounce" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#b8f2ff" style="stop-color: color(display-p3 0.74 0.96 1)" stop-opacity="0.65"/>
+<stop offset="1" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="chamfer-cut-crown" gradientUnits="userSpaceOnUse" x1="128" y1="38" x2="128" y2="126">
+<stop offset="0" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.62"/>
+<stop offset="1" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<mask id="chamfer-cut-crown-mask">
+<rect x="0" y="0" width="256" height="256" fill="url(#chamfer-cut-crown)"/>
+</mask>
+<clipPath id="chamfer-cut-seven-clip">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(128 128) scale(1.1) translate(-128 -128) translate(30 48)"/>
+</clipPath>
+<clipPath id="chamfer-cut-seven-above">
+<polygon points="-60,-60 256.6,-60 -60,256.6"/>
+</clipPath>
+<clipPath id="chamfer-cut-seven-below">
+<polygon points="256.6,-60 460,-60 460,460 -60,460 -60,256.6"/>
+</clipPath>
+<mask id="chamfer-cut-seven-kerf-mask">
+<rect x="0" y="0" width="256" height="256" fill="#ffffff" style="fill: color(display-p3 1 1 1)"/>
+<rect x="-200" y="-4.5" width="656" height="9" transform="rotate(-45 68.6 128) translate(68.6 128)" fill="#000000" style="fill: color(display-p3 0 0 0)"/>
+</mask>
+<clipPath id="chamfer-cut-three-clip">
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(128 128) scale(1.1) translate(-128 -128) translate(30 48)"/>
+</clipPath>
+<clipPath id="chamfer-cut-three-above">
+<polygon points="-60,-60 375.4,-60 -60,375.4"/>
+</clipPath>
+<clipPath id="chamfer-cut-three-below">
+<polygon points="375.4,-60 460,-60 460,460 -60,460 -60,375.4"/>
+</clipPath>
+<mask id="chamfer-cut-three-kerf-mask">
+<rect x="0" y="0" width="256" height="256" fill="#ffffff" style="fill: color(display-p3 1 1 1)"/>
+<rect x="-200" y="-4.5" width="656" height="9" transform="rotate(-45 187.4 128) translate(187.4 128)" fill="#000000" style="fill: color(display-p3 0 0 0)"/>
+</mask>
+</defs>
+<g mask="url(#chamfer-cut-seven-kerf-mask)">
+<g clip-path="url(#chamfer-cut-seven-clip)">
+<g clip-path="url(#chamfer-cut-seven-above)"><rect x="0" y="0" width="256" height="256" fill="url(#chamfer-cut-upper)"/></g>
+<g clip-path="url(#chamfer-cut-seven-below)"><rect x="0" y="0" width="256" height="256" fill="url(#chamfer-cut-lower)"/></g>
+</g>
+</g>
+<g clip-path="url(#chamfer-cut-seven-clip)">
+<rect id="chamfer-cut-shine-kerf-lip-seven" class="shine" x="-200" y="-17.5" width="656" height="13" transform="rotate(-45 68.6 128) translate(68.6 128)" fill="url(#chamfer-cut-kerf-lip)"/>
+<rect id="chamfer-cut-shine-kerf-bounce-seven" class="shine" x="-200" y="4.5" width="656" height="9" transform="rotate(-45 68.6 128) translate(68.6 128)" fill="url(#chamfer-cut-kerf-bounce)"/>
+<g mask="url(#chamfer-cut-crown-mask)">
+<path id="chamfer-cut-shine-crown-seven" class="shine" d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(128 128) scale(1.1) translate(-128 -128) translate(30 48)" fill="none" stroke="#ffffff" style="stroke: color(display-p3 1 1 1)" stroke-width="6"/>
+</g>
+</g>
+<g mask="url(#chamfer-cut-three-kerf-mask)">
+<g clip-path="url(#chamfer-cut-three-clip)">
+<g clip-path="url(#chamfer-cut-three-above)"><rect x="0" y="0" width="256" height="256" fill="url(#chamfer-cut-upper)"/></g>
+<g clip-path="url(#chamfer-cut-three-below)"><rect x="0" y="0" width="256" height="256" fill="url(#chamfer-cut-lower)"/></g>
+</g>
+</g>
+<g clip-path="url(#chamfer-cut-three-clip)">
+<rect id="chamfer-cut-shine-kerf-lip-three" class="shine" x="-200" y="-17.5" width="656" height="13" transform="rotate(-45 187.4 128) translate(187.4 128)" fill="url(#chamfer-cut-kerf-lip)"/>
+<rect id="chamfer-cut-shine-kerf-bounce-three" class="shine" x="-200" y="4.5" width="656" height="9" transform="rotate(-45 187.4 128) translate(187.4 128)" fill="url(#chamfer-cut-kerf-bounce)"/>
+<g mask="url(#chamfer-cut-crown-mask)">
+<path id="chamfer-cut-shine-crown-three" class="shine" d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(128 128) scale(1.1) translate(-128 -128) translate(30 48)" fill="none" stroke="#ffffff" style="stroke: color(display-p3 1 1 1)" stroke-width="6"/>
+</g>
+</g></svg>

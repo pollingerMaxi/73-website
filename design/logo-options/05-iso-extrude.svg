@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none" role="img" aria-label="73"><defs>
+<g id="iso-extrude-glyphs">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z"/>
+</g>
+<linearGradient id="iso-extrude-face" gradientUnits="userSpaceOnUse" x1="40" y1="36" x2="216" y2="216">
+<stop offset="0" stop-color="#22d3ee" style="stop-color: color(display-p3 0.05 0.86 0.96)"/>
+<stop offset="0.42" stop-color="#7fb2ff" style="stop-color: color(display-p3 0.5 0.71 1)"/>
+<stop offset="1" stop-color="#4f8cff" style="stop-color: color(display-p3 0.28 0.54 1)"/>
+</linearGradient>
+<linearGradient id="iso-extrude-keylight" gradientUnits="userSpaceOnUse" x1="52" y1="34" x2="204" y2="220">
+<stop offset="0" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="1"/>
+<stop offset="0.34" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.45"/>
+<stop offset="0.62" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="iso-extrude-sweep" gradientUnits="userSpaceOnUse" x1="10" y1="200" x2="246" y2="56">
+<stop offset="0.28" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+<stop offset="0.45" stop-color="#b8f2ff" style="stop-color: color(display-p3 0.74 0.96 1)" stop-opacity="0.4"/>
+<stop offset="0.51" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.72"/>
+<stop offset="0.66" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<mask id="iso-extrude-keylight-mask">
+<rect x="0" y="0" width="256" height="256" fill="url(#iso-extrude-keylight)"/>
+</mask>
+<clipPath id="iso-extrude-face-clip">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)"/>
+</clipPath>
+</defs>
+<g transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)">
+<use href="#iso-extrude-glyphs" transform="translate(18.72 13.52)" fill="#170d47" style="fill: color(display-p3 0.1008 0.056 0.3136)"/>
+<use href="#iso-extrude-glyphs" transform="translate(18.00 13.00)" fill="#190e4c" style="fill: color(display-p3 0.110208 0.060928 0.333312)"/>
+<use href="#iso-extrude-glyphs" transform="translate(17.28 12.48)" fill="#1b0f50" style="fill: color(display-p3 0.119616 0.065856 0.353024)"/>
+<use href="#iso-extrude-glyphs" transform="translate(16.56 11.96)" fill="#1d1055" style="fill: color(display-p3 0.129024 0.070784 0.372736)"/>
+<use href="#iso-extrude-glyphs" transform="translate(15.84 11.44)" fill="#201159" style="fill: color(display-p3 0.138432 0.075712 0.392448)"/>
+<use href="#iso-extrude-glyphs" transform="translate(15.12 10.92)" fill="#22125e" style="fill: color(display-p3 0.14784 0.08064 0.41216)"/>
+<use href="#iso-extrude-glyphs" transform="translate(14.40 10.40)" fill="#241362" style="fill: color(display-p3 0.157248 0.085568 0.431872)"/>
+<use href="#iso-extrude-glyphs" transform="translate(13.68 9.88)" fill="#261567" style="fill: color(display-p3 0.166656 0.090496 0.451584)"/>
+<use href="#iso-extrude-glyphs" transform="translate(12.96 9.36)" fill="#28166b" style="fill: color(display-p3 0.176064 0.095424 0.471296)"/>
+<use href="#iso-extrude-glyphs" transform="translate(12.24 8.84)" fill="#2a1770" style="fill: color(display-p3 0.185472 0.100352 0.491008)"/>
+<use href="#iso-extrude-glyphs" transform="translate(11.52 8.32)" fill="#2c1874" style="fill: color(display-p3 0.19488 0.10528 0.51072)"/>
+<use href="#iso-extrude-glyphs" transform="translate(10.80 7.80)" fill="#2f1979" style="fill: color(display-p3 0.204288 0.110208 0.530432)"/>
+<use href="#iso-extrude-glyphs" transform="translate(10.08 7.28)" fill="#311a7d" style="fill: color(display-p3 0.213696 0.115136 0.550144)"/>
+<use href="#iso-extrude-glyphs" transform="translate(9.36 6.76)" fill="#331b82" style="fill: color(display-p3 0.223104 0.120064 0.569856)"/>
+<use href="#iso-extrude-glyphs" transform="translate(8.64 6.24)" fill="#351c86" style="fill: color(display-p3 0.232512 0.124992 0.589568)"/>
+<use href="#iso-extrude-glyphs" transform="translate(7.92 5.72)" fill="#371e8b" style="fill: color(display-p3 0.24192 0.12992 0.60928)"/>
+<use href="#iso-extrude-glyphs" transform="translate(7.20 5.20)" fill="#391f8f" style="fill: color(display-p3 0.251328 0.134848 0.628992)"/>
+<use href="#iso-extrude-glyphs" transform="translate(6.48 4.68)" fill="#3b2094" style="fill: color(display-p3 0.260736 0.139776 0.648704)"/>
+<use href="#iso-extrude-glyphs" transform="translate(5.76 4.16)" fill="#3e2198" style="fill: color(display-p3 0.270144 0.144704 0.668416)"/>
+<use href="#iso-extrude-glyphs" transform="translate(5.04 3.64)" fill="#40229d" style="fill: color(display-p3 0.279552 0.149632 0.688128)"/>
+<use href="#iso-extrude-glyphs" transform="translate(4.32 3.12)" fill="#4223a1" style="fill: color(display-p3 0.28896 0.15456 0.70784)"/>
+<use href="#iso-extrude-glyphs" transform="translate(3.60 2.60)" fill="#4424a6" style="fill: color(display-p3 0.298368 0.159488 0.727552)"/>
+<use href="#iso-extrude-glyphs" transform="translate(2.88 2.08)" fill="#4625aa" style="fill: color(display-p3 0.307776 0.164416 0.747264)"/>
+<use href="#iso-extrude-glyphs" transform="translate(2.16 1.56)" fill="#4827af" style="fill: color(display-p3 0.317184 0.169344 0.766976)"/>
+<use href="#iso-extrude-glyphs" transform="translate(1.44 1.04)" fill="#4a28b3" style="fill: color(display-p3 0.326592 0.174272 0.786688)"/>
+<use href="#iso-extrude-glyphs" transform="translate(0.72 0.52)" fill="#4c29b8" style="fill: color(display-p3 0.336 0.1792 0.8064)"/>
+<use href="#iso-extrude-glyphs" fill="url(#iso-extrude-face)"/>
+</g>
+<g clip-path="url(#iso-extrude-face-clip)">
+<rect id="iso-extrude-shine-sweep" class="shine" x="0" y="0" width="256" height="256" fill="url(#iso-extrude-sweep)"/>
+<g mask="url(#iso-extrude-keylight-mask)">
+<g transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="none" stroke="#ffffff" style="stroke: color(display-p3 1 1 1)" stroke-width="7">
+<path id="iso-extrude-shine-keyline-a" class="shine" d="M0 0H76L88 12V26L48 160H20L60 26H0Z"/>
+<path id="iso-extrude-shine-keyline-b" class="shine" d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z"/>
+</g>
+</g>
+</g></svg>

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none" role="img" aria-label="73"><style>
+:where(.iso-keyline-spec) { fill: color(display-p3 1 1 1); }
+</style>
+<defs>
+<g id="iso-keyline-glyphs">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z"/>
+</g>
+<linearGradient id="iso-keyline-key-falloff" gradientUnits="userSpaceOnUse" x1="70" y1="25" x2="210" y2="235">
+<stop offset="0" stop-color="#ffffff"/>
+<stop offset="0.5" stop-color="#e0e0e0"/>
+<stop offset="1" stop-color="#a5a5a5"/>
+</linearGradient>
+<mask id="iso-keyline-key-mask">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="url(#iso-keyline-key-falloff)"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="url(#iso-keyline-key-falloff)"/>
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(4 4) translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="#000000"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(4 4) translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="#000000"/>
+</mask>
+</defs>
+<g transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)">
+<use href="#iso-keyline-glyphs" transform="translate(18.72 13.52)" fill="#0d1d4c" style="fill: color(display-p3 0.0416 0.1058 0.318)"/>
+<use href="#iso-keyline-glyphs" transform="translate(18.00 13.00)" fill="#0e1f4f" style="fill: color(display-p3 0.043136 0.1104 0.328176)"/>
+<use href="#iso-keyline-glyphs" transform="translate(17.28 12.48)" fill="#0e2051" style="fill: color(display-p3 0.044672 0.115 0.338352)"/>
+<use href="#iso-keyline-glyphs" transform="translate(16.56 11.96)" fill="#0f2154" style="fill: color(display-p3 0.046208 0.1196 0.348528)"/>
+<use href="#iso-keyline-glyphs" transform="translate(15.84 11.44)" fill="#0f2256" style="fill: color(display-p3 0.047744 0.1242 0.358704)"/>
+<use href="#iso-keyline-glyphs" transform="translate(15.12 10.92)" fill="#102459" style="fill: color(display-p3 0.04928 0.1288 0.36888)"/>
+<use href="#iso-keyline-glyphs" transform="translate(14.40 10.40)" fill="#10255b" style="fill: color(display-p3 0.050816 0.1334 0.379056)"/>
+<use href="#iso-keyline-glyphs" transform="translate(13.68 9.88)" fill="#11265e" style="fill: color(display-p3 0.052352 0.138 0.389232)"/>
+<use href="#iso-keyline-glyphs" transform="translate(12.96 9.36)" fill="#112860" style="fill: color(display-p3 0.053888 0.1426 0.399408)"/>
+<use href="#iso-keyline-glyphs" transform="translate(12.24 8.84)" fill="#122963" style="fill: color(display-p3 0.055424 0.1472 0.409584)"/>
+<use href="#iso-keyline-glyphs" transform="translate(11.52 8.32)" fill="#122a65" style="fill: color(display-p3 0.05696 0.1518 0.41976)"/>
+<use href="#iso-keyline-glyphs" transform="translate(10.80 7.80)" fill="#132b67" style="fill: color(display-p3 0.058496 0.1564 0.429936)"/>
+<use href="#iso-keyline-glyphs" transform="translate(10.08 7.28)" fill="#132d6a" style="fill: color(display-p3 0.060032 0.161 0.440112)"/>
+<use href="#iso-keyline-glyphs" transform="translate(9.36 6.76)" fill="#142e6c" style="fill: color(display-p3 0.061568 0.1656 0.450288)"/>
+<use href="#iso-keyline-glyphs" transform="translate(8.64 6.24)" fill="#142f6f" style="fill: color(display-p3 0.063104 0.1702 0.460464)"/>
+<use href="#iso-keyline-glyphs" transform="translate(7.92 5.72)" fill="#153071" style="fill: color(display-p3 0.06464 0.1748 0.47064)"/>
+<use href="#iso-keyline-glyphs" transform="translate(7.20 5.20)" fill="#153274" style="fill: color(display-p3 0.066176 0.1794 0.480816)"/>
+<use href="#iso-keyline-glyphs" transform="translate(6.48 4.68)" fill="#163376" style="fill: color(display-p3 0.067712 0.184 0.490992)"/>
+<use href="#iso-keyline-glyphs" transform="translate(5.76 4.16)" fill="#163479" style="fill: color(display-p3 0.069248 0.1886 0.501168)"/>
+<use href="#iso-keyline-glyphs" transform="translate(5.04 3.64)" fill="#17367b" style="fill: color(display-p3 0.070784 0.1932 0.511344)"/>
+<use href="#iso-keyline-glyphs" transform="translate(4.32 3.12)" fill="#17377d" style="fill: color(display-p3 0.07232 0.1978 0.52152)"/>
+<use href="#iso-keyline-glyphs" transform="translate(3.60 2.60)" fill="#183880" style="fill: color(display-p3 0.073856 0.2024 0.531696)"/>
+<use href="#iso-keyline-glyphs" transform="translate(2.88 2.08)" fill="#183982" style="fill: color(display-p3 0.075392 0.207 0.541872)"/>
+<use href="#iso-keyline-glyphs" transform="translate(2.16 1.56)" fill="#193b85" style="fill: color(display-p3 0.076928 0.2116 0.552048)"/>
+<use href="#iso-keyline-glyphs" transform="translate(1.44 1.04)" fill="#193c87" style="fill: color(display-p3 0.078464 0.2162 0.562224)"/>
+<use href="#iso-keyline-glyphs" transform="translate(0.72 0.52)" fill="#1a3d8a" style="fill: color(display-p3 0.08 0.2208 0.5724)"/>
+<use href="#iso-keyline-glyphs" fill="#3a72dd" style="fill: color(display-p3 0.15 0.44 0.88)"/>
+</g>
+<g mask="url(#iso-keyline-key-mask)">
+<path id="iso-keyline-shine-key-seven" class="shine iso-keyline-spec" d="M0 0H76L88 12V26L48 160H20L60 26H0Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="#ffffff"/>
+<path id="iso-keyline-shine-key-three" class="shine iso-keyline-spec" d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" transform="translate(-9 -4.2) translate(128 128) scale(1) skewY(-11) translate(-128 -128) translate(30 48)" fill="#ffffff"/>
+</g></svg>

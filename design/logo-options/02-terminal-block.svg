@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none" role="img" aria-label="73"><defs>
+<linearGradient id="terminal-block-panel" gradientUnits="userSpaceOnUse" x1="40" y1="12" x2="216" y2="244">
+<stop offset="0" stop-color="#182130" style="stop-color: color(display-p3 0.09 0.126 0.183)"/>
+<stop offset="1" stop-color="#0d1117" style="stop-color: color(display-p3 0.051 0.067 0.09)"/>
+</linearGradient>
+<linearGradient id="terminal-block-rim" gradientUnits="userSpaceOnUse" x1="40" y1="20" x2="216" y2="240">
+<stop offset="0" stop-color="#4f8cff" style="stop-color: color(display-p3 0.28 0.54 1)" stop-opacity="0.85"/>
+<stop offset="0.55" stop-color="#1b3a8f" style="stop-color: color(display-p3 0.05 0.2 0.62)" stop-opacity="0.55"/>
+<stop offset="1" stop-color="#8b5cff" style="stop-color: color(display-p3 0.52 0.33 1)" stop-opacity="0.3"/>
+</linearGradient>
+<linearGradient id="terminal-block-glyph" gradientUnits="userSpaceOnUse" x1="60" y1="70" x2="200" y2="190">
+<stop offset="0" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)"/>
+<stop offset="1" stop-color="#e6edf3" style="stop-color: color(display-p3 0.9 0.93 0.96)"/>
+</linearGradient>
+<linearGradient id="terminal-block-cursor" gradientUnits="userSpaceOnUse" x1="186.6" y1="72" x2="220.6" y2="184">
+<stop offset="0" stop-color="#b8f2ff" style="stop-color: color(display-p3 0.74 0.96 1)"/>
+<stop offset="0.35" stop-color="#4f8cff" style="stop-color: color(display-p3 0.28 0.54 1)"/>
+<stop offset="1" stop-color="#2b5fe0" style="stop-color: color(display-p3 0.1 0.34 0.95)"/>
+</linearGradient>
+<linearGradient id="terminal-block-gloss" gradientUnits="userSpaceOnUse" x1="12" y1="12" x2="140" y2="150">
+<stop offset="0" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.2"/>
+<stop offset="0.55" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.04"/>
+<stop offset="1" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<linearGradient id="terminal-block-topedge" gradientUnits="userSpaceOnUse" x1="128" y1="14" x2="128" y2="120">
+<stop offset="0" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.75"/>
+<stop offset="1" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<mask id="terminal-block-topedge-mask">
+<rect x="0" y="0" width="256" height="256" fill="url(#terminal-block-topedge)"/>
+</mask>
+<linearGradient id="terminal-block-cursor-specular" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0.72"/>
+<stop offset="1" stop-color="#ffffff" style="stop-color: color(display-p3 1 1 1)" stop-opacity="0"/>
+</linearGradient>
+<filter id="terminal-block-cursor-glow" x="-120%" y="-120%" width="340%" height="340%">
+<feGaussianBlur stdDeviation="9"/>
+</filter>
+</defs>
+<rect x="12" y="12" width="232" height="232" rx="52" fill="url(#terminal-block-panel)"/>
+<rect x="13.5" y="13.5" width="229" height="229" rx="50.5" fill="none" stroke="url(#terminal-block-rim)" stroke-width="3"/>
+<rect id="terminal-block-shine-gloss" class="shine" x="12" y="12" width="232" height="232" rx="52" fill="url(#terminal-block-gloss)"/>
+<g mask="url(#terminal-block-topedge-mask)">
+<rect id="terminal-block-shine-topedge" class="shine" x="15" y="15" width="226" height="226" rx="49" fill="none" stroke="#ffffff" style="stroke: color(display-p3 1 1 1)" stroke-width="2"/>
+</g>
+<g transform="translate(35.4 72) scale(0.7)">
+<path d="M0 0H76L88 12V26L48 160H20L60 26H0Z" fill="url(#terminal-block-glyph)"/>
+<path d="M108 0H184L196 12V148L184 160H108V134H170V93H136L128 85V75L136 67H170V26H108Z" fill="url(#terminal-block-glyph)"/>
+</g>
+<rect id="terminal-block-shine-cursor-glow" class="shine" x="186.6" y="72" width="34" height="112" rx="3" fill="#4f8cff" style="fill: color(display-p3 0.28 0.54 1)" filter="url(#terminal-block-cursor-glow)" opacity="0.85"/>
+<rect x="186.6" y="72" width="34" height="112" rx="3" fill="url(#terminal-block-cursor)"/>
+<rect id="terminal-block-shine-cursor-specular" class="shine" x="189.6" y="75" width="28" height="51.52" rx="2" fill="url(#terminal-block-cursor-specular)"/></svg>
