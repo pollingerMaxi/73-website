@@ -275,3 +275,63 @@ a:hover {
   color: var(--color-text-muted);
   font-size: 0.9rem;
 }
+
+/*
+  The sideloaded download: more than a button, on purpose.
+
+  Installing an APK means switching off a protection Android puts up deliberately, and this app then
+  asks for an accessibility service and screen capture. Somebody weighing that up needs the version,
+  the checksum and the caveats laid out, not hidden behind a friendly button.
+*/
+.sideload {
+  margin-top: var(--space-md);
+}
+
+.sideload-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin: var(--space-md) 0 var(--space-lg);
+  padding: 0;
+}
+
+.sideload-facts div {
+  margin: 0;
+}
+
+.sideload-facts dt {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.sideload-facts dd {
+  margin: var(--space-xs) 0 0;
+  font-weight: 600;
+}
+
+.sideload-prose {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.sideload-command,
+.sideload-hash {
+  display: block;
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  /* A sha256 has no spaces to break at, and must not push the page sideways on a phone. */
+  overflow-wrap: anywhere;
+}
+
+.sideload-hash {
+  color: var(--color-text-muted);
+}

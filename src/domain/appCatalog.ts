@@ -16,6 +16,14 @@ export interface AppEntry {
   readonly description: string
   readonly features: readonly string[]
   readonly download?: ExternalLink
+  /**
+   * Where to find the build manifest, for an app distributed as an APK from this site.
+   *
+   * Separate from `download`, which is a link to somewhere else. This one is a file the release
+   * pipeline overwrites on every build, so the page can state the version, size and checksum
+   * without any of them being written into the site by hand and going stale on the next release.
+   */
+  readonly sideload?: { readonly manifestUrl: string }
 }
 
 export const PLATFORM_LABELS: Readonly<Record<Platform, string>> = {
@@ -48,17 +56,20 @@ const APP_CATALOG: readonly AppEntry[] = [
   },
   {
     id: 'hwa-dungeon-android',
-    name: 'HWA Dungeon Automation for Android',
+    name: '73 automation',
     platform: 'android',
-    status: 'planned',
-    tagline: 'The same dungeon automation, on your phone.',
+    status: 'available',
+    tagline: 'Plays the daily grind in Hero Wars: Alliance while you do something else.',
     description:
-      'An Android app that brings the dungeon automation to mobile, so you can clear the daily run without opening a browser.',
+      'An Android app that plays two things for you: the guild dungeon, and the brawl events that come round every few weeks. It works by reading the screen — the game is one canvas with no buttons to press programmatically — so it screenshots, works out which screen is showing, taps, and repeats. Anything it does not recognise stops the run and keeps the frame, rather than tapping and hoping.',
     features: [
-      'Same automation engine as the Chrome extension',
-      'Background runs with a progress notification',
-      'Presets synchronised across your devices',
+      'Guild dungeon: picks the battle, swaps the damaged tank in, collects the rewards',
+      'Brawls: attacks the weaker of the two opponents every time, and skips the fight',
+      'Stops rather than guessing on any screen it cannot read',
+      'Keeps a log of every decision and every tap, so a run can be explained afterwards',
+      'A floating panel to start and stop it, over the game',
     ],
+    sideload: { manifestUrl: '/downloads/latest.json' },
   },
   {
     id: 'hwa-dungeon-ios',

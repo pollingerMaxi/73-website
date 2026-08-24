@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { PlatformIcon } from '../components/PlatformIcon'
+import { SideloadDownload } from '../components/SideloadDownload'
 import { StatusBadge } from '../components/StatusBadge'
 import { PLATFORM_LABELS, findAppById } from '../domain/appCatalog'
 import { NotFoundPage } from './NotFoundPage'
@@ -35,7 +36,9 @@ export function AppDetailPage() {
         ))}
       </ul>
 
-      {app.download ? (
+      {app.sideload ? (
+        <SideloadDownload manifestUrl={app.sideload.manifestUrl} />
+      ) : app.download ? (
         <a
           className="button button-primary"
           href={app.download.url}
