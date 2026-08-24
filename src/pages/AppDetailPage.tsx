@@ -37,7 +37,10 @@ export function AppDetailPage() {
       </ul>
 
       {app.sideload ? (
-        <SideloadDownload manifestUrl={app.sideload.manifestUrl} />
+        <SideloadDownload
+          manifestUrl={app.sideload.manifestUrl}
+          installsAs={app.sideload.installsAs}
+        />
       ) : app.download ? (
         <a
           className="button button-primary"

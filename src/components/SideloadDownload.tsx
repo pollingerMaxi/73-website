@@ -29,7 +29,13 @@ type LoadState =
  * trust that deserves the checksum, the version, and a straight answer about what the checksum does
  * and does not prove.
  */
-export function SideloadDownload({ manifestUrl }: { readonly manifestUrl: string }) {
+export function SideloadDownload({
+  manifestUrl,
+  installsAs,
+}: {
+  readonly manifestUrl: string
+  readonly installsAs?: string
+}) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
 
   useEffect(() => {
@@ -84,6 +90,12 @@ export function SideloadDownload({ manifestUrl }: { readonly manifestUrl: string
           <dt>Published</dt>
           <dd>{formatDate(manifest.released)}</dd>
         </div>
+        {installsAs ? (
+          <div>
+            <dt>Installs as</dt>
+            <dd>{installsAs}</dd>
+          </div>
+        ) : null}
       </dl>
 
       <h2 className="detail-section-title">Check what you downloaded</h2>

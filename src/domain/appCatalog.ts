@@ -23,7 +23,18 @@ export interface AppEntry {
    * pipeline overwrites on every build, so the page can state the version, size and checksum
    * without any of them being written into the site by hand and going stale on the next release.
    */
-  readonly sideload?: { readonly manifestUrl: string }
+  readonly sideload?: {
+    readonly manifestUrl: string
+    /**
+     * What the app calls itself once installed, when that differs from its name here.
+     *
+     * It does differ, and deliberately: the APK carries a neutral name while this page says what
+     * the thing actually is. Without stating it, somebody downloads one name and finds another on
+     * their home screen, which is exactly the sort of small surprise that makes a sideloaded app
+     * feel untrustworthy.
+     */
+    readonly installsAs?: string
+  }
 }
 
 export const PLATFORM_LABELS: Readonly<Record<Platform, string>> = {
@@ -56,7 +67,7 @@ const APP_CATALOG: readonly AppEntry[] = [
   },
   {
     id: 'hwa-dungeon-android',
-    name: '73 automation',
+    name: 'HWA dungeon & brawl automation',
     platform: 'android',
     status: 'available',
     tagline: 'Plays the daily grind in Hero Wars: Alliance while you do something else.',
@@ -69,7 +80,7 @@ const APP_CATALOG: readonly AppEntry[] = [
       'Keeps a log of every decision and every tap, so a run can be explained afterwards',
       'A floating panel to start and stop it, over the game',
     ],
-    sideload: { manifestUrl: '/downloads/latest.json' },
+    sideload: { manifestUrl: '/downloads/latest.json', installsAs: '73 automation' },
   },
   {
     id: 'hwa-dungeon-ios',
