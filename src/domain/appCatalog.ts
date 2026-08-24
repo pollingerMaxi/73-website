@@ -80,7 +80,7 @@ const APP_CATALOG: readonly AppEntry[] = [
       'Keeps a log of every decision and every tap, so a run can be explained afterwards',
       'A floating panel to start and stop it, over the game',
     ],
-    sideload: { manifestUrl: '/downloads/latest.json', installsAs: '73 automation' },
+    sideload: { manifestUrl: '/downloads/latest.json', installsAs: 'HWA automation' },
   },
   {
     id: 'hwa-dungeon-ios',
