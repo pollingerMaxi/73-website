@@ -103,7 +103,7 @@ export function SideloadDownload({
         Run this against the file and compare it with the checksum below. Matching means the download
         arrived intact and is the file this site published.
       </p>
-      <code className="sideload-command">shasum -a 256 73-automation.apk</code>
+      <code className="sideload-command">shasum -a 256 hwa-automation.apk</code>
       <code className="sideload-hash">{manifest.sha256}</code>
 
       <h2 className="detail-section-title">Before you install it</h2>
