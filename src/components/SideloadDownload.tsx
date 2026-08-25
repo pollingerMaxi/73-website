@@ -106,6 +106,33 @@ export function SideloadDownload({
       <code className="sideload-command">shasum -a 256 hwa-automation.apk</code>
       <code className="sideload-hash">{manifest.sha256}</code>
 
+      <h2 className="detail-section-title">Installing it</h2>
+      <p className="sideload-prose">
+        Android will block this on the first attempt, with &ldquo;App blocked to protect your
+        device&rdquo;. That is Play Protect refusing any sideloaded app that declares an
+        accessibility service &mdash; the thing this app uses to tap the game, and the same thing a
+        banking trojan would use to tap your bank. It is a block on the category, not a detection of
+        anything in this build.
+      </p>
+      <ol className="sideload-steps">
+        <li>
+          Play Store &rarr; your profile icon &rarr; <strong>Play Protect</strong> &rarr; the gear
+          &rarr; turn off <strong>Scan apps with Play Protect</strong>.
+        </li>
+        <li>Install the APK, then turn that setting back on.</li>
+        <li>
+          The accessibility toggle will be greyed out. Settings &rarr; Apps &rarr; HWA automation
+          &rarr; the three-dot menu &rarr; <strong>Allow restricted settings</strong>.
+        </li>
+        <li>Then the app&rsquo;s own three permissions, which it walks you through.</li>
+      </ol>
+      <p className="sideload-prose">
+        Turning off a security feature to install something is exactly what malware asks people to
+        do, and there is no honest way around saying so. If that is a step too far &mdash; which is a
+        reasonable place to draw the line &mdash; do not install this. Anyone comfortable with a
+        cable can use <code>adb install</code> instead, which Play Protect does not intercept.
+      </p>
+
       <h2 className="detail-section-title">Before you install it</h2>
       <p className="sideload-prose">
         This is not from an app store, so Android will ask you to allow installing unknown apps. It

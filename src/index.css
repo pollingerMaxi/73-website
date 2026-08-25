@@ -335,3 +335,31 @@ a:hover {
 .sideload-hash {
   color: var(--color-text-muted);
 }
+
+/* The install steps, which are numbered because their order matters: the restricted-settings
+   gate only appears after the app is installed. */
+.sideload-steps {
+  margin: 0 0 var(--space-md);
+  padding-left: 1.4rem;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.sideload-steps li {
+  margin-bottom: var(--space-xs);
+}
+
+.sideload-steps strong,
+.sideload-prose strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.sideload-prose code {
+  padding: 0.1rem 0.35rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+}
