@@ -1,4 +1,4 @@
-export type Platform = 'chrome' | 'android' | 'ios'
+export type Platform = 'browser' | 'android' | 'ios'
 
 export type ReleaseStatus = 'available' | 'in-development' | 'planned'
 
@@ -38,7 +38,7 @@ export interface AppEntry {
 }
 
 export const PLATFORM_LABELS: Readonly<Record<Platform, string>> = {
-  chrome: 'Chrome Extension',
+  browser: 'Browser',
   android: 'Android',
   ios: 'iOS',
 }
@@ -53,11 +53,11 @@ const APP_CATALOG: readonly AppEntry[] = [
   {
     id: 'hwa-dungeon-chrome',
     name: 'HWA Dungeon Automation',
-    platform: 'chrome',
+    platform: 'browser',
     status: 'in-development',
     tagline: 'Run your daily dungeon from the browser, hands free.',
     description:
-      'A Chrome extension that automates the Hero Wars Alliance dungeon run: it picks the path, sends the right teams and collects the rewards while you do something else.',
+      'Browser automation for the Hero Wars Alliance dungeon run: it picks the path, sends the right teams and collects the rewards while you do something else.',
     features: [
       'Automatic path selection based on your roster',
       'Team presets per dungeon floor',

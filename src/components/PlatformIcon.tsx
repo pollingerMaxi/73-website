@@ -1,7 +1,7 @@
 import type { Platform } from '../domain/appCatalog'
 
 const PLATFORM_GLYPHS: Readonly<Record<Platform, string>> = {
-  chrome: '◎',
+  browser: '◎',
   android: '▲',
   ios: '◆',
 }
