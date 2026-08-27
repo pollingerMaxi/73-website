@@ -51,7 +51,7 @@ export const STATUS_LABELS: Readonly<Record<ReleaseStatus, string>> = {
 
 const APP_CATALOG: readonly AppEntry[] = [
   {
-    id: 'hwa-dungeon-chrome',
+    id: 'hwa-dungeon-browser',
     name: 'HWA Dungeon Automation',
     platform: 'browser',
     status: 'in-development',
@@ -99,6 +99,26 @@ const APP_CATALOG: readonly AppEntry[] = [
 
 export function listApps(): readonly AppEntry[] {
   return APP_CATALOG
+}
+
+/**
+ * Ids this site used to publish, and what they are called now.
+ *
+ * Renaming an app changes a URL that is already out in the world, so the old id keeps resolving
+ * rather than turning into a dead link. Entries here are permanent: the whole point is that a link
+ * shared once keeps working.
+ */
+const RENAMED_APP_IDS: Readonly<Record<string, string>> = {
+  'hwa-dungeon-chrome': 'hwa-dungeon-browser',
+}
+
+export interface AppIdRedirect {
+  readonly from: string
+  readonly to: string
+}
+
+export function listAppIdRedirects(): readonly AppIdRedirect[] {
+  return Object.entries(RENAMED_APP_IDS).map(([from, to]) => ({ from, to }))
 }
 
 export function findAppById(id: string | undefined): AppEntry | undefined {
