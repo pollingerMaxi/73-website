@@ -25,19 +25,21 @@ export function SiteLayout() {
       </main>
 
       <footer className="site-footer">
-        <p>
-          {SITE_DOMAIN} is a personal, non-commercial project by an independent
-          developer. The tools listed here are built for my own use and shared
-          as-is, free of charge, with no warranty of any kind.
-        </p>
-        <p>
-          Nothing on this site is affiliated with, endorsed by, or connected to any
-          game, developer or publisher. All game names and trademarks belong to
-          their respective owners and are used only to describe what a tool works
-          with. Automating a game may breach its terms of service, and doing so is
-          your own decision and your own risk — please read the{' '}
-          <Link to="/disclaimer">full disclaimer</Link>.
-        </p>
+        <div className="site-footer-inner">
+          <p>
+            {SITE_DOMAIN} is a personal, non-commercial project by an independent
+            developer. The tools listed here are built for my own use and shared
+            as-is, free of charge, with no warranty of any kind.
+          </p>
+          <p>
+            Nothing on this site is affiliated with, endorsed by, or connected to any
+            game, developer or publisher. All game names and trademarks belong to
+            their respective owners and are used only to describe what a tool works
+            with. Automating a game may breach its terms of service, and doing so is
+            your own decision and your own risk — please read the{' '}
+            <Link to="/disclaimer">full disclaimer</Link>.
+          </p>
+        </div>
       </footer>
     </div>
   )

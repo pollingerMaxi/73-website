@@ -83,12 +83,6 @@ export function DisclaimerPage() {
         <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> and I will respond
         promptly. I am willing to amend or remove material on request.
       </p>
-
-      <p className="detail-note">
-        This page describes the nature of this project. It is not legal advice, and
-        it does not modify whatever agreement exists between you and any game
-        publisher.
-      </p>
     </article>
   )
 }
