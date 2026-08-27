@@ -7,7 +7,7 @@ export function HomePage() {
   return (
     <>
       <section className="hero">
-        <p className="hero-eyebrow">Personal projects</p>
+        <p className="hero-eyebrow">Game automations</p>
         <h1 className="hero-title">Small tools that play the boring parts for you</h1>
         <p className="hero-subtitle">
           Automation apps for browser, Android and iOS. Pick one to see what it

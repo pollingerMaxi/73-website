@@ -77,10 +77,120 @@ a:hover {
   dynamic-range-limit: no-limit;
 }
 
-.site-nav {
+/* Burger menu -------------------------------------------------------------- */
+
+.nav {
+  position: relative;
+}
+
+.nav-toggle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.nav-toggle:hover,
+.nav-toggle[aria-expanded='true'] {
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+}
+
+/* Three bars drawn from one element: the box is the middle bar, the
+   pseudo-elements are the outer two. */
+.nav-toggle-bars,
+.nav-toggle-bars::before,
+.nav-toggle-bars::after {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+.nav-toggle-bars {
+  position: relative;
+}
+
+.nav-toggle-bars::before,
+.nav-toggle-bars::after {
+  content: '';
+  position: absolute;
+  left: 0;
+}
+
+.nav-toggle-bars::before {
+  top: -6px;
+}
+
+.nav-toggle-bars::after {
+  top: 6px;
+}
+
+.nav-panel {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  z-index: 10;
   display: flex;
-  gap: var(--space-md);
+  flex-direction: column;
+  min-width: 20rem;
+  max-width: min(24rem, calc(100vw - 2 * var(--space-md)));
+  padding: var(--space-xs);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.nav-heading {
+  margin: var(--space-sm) 0 var(--space-xs);
+  padding: 0 var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: 8px;
+  color: var(--color-text);
   font-size: 0.95rem;
+}
+
+.nav-link:hover {
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.nav-link-app .nav-link-name {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.nav-link-app .badge {
+  flex-shrink: 0;
+}
+
+.nav-link-secondary {
+  margin-top: var(--space-xs);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 8px 8px;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 }
 
 .site-main {
@@ -100,7 +210,33 @@ a:hover {
 .site-footer p {
   max-width: var(--content-width);
   margin: 0 auto;
-  padding: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  line-height: 1.65;
+}
+
+.site-footer p:first-child {
+  padding-top: var(--space-md);
+}
+
+.site-footer p:last-child {
+  padding-bottom: var(--space-md);
+}
+
+/* Legal copy ---------------------------------------------------------------- */
+
+.legal p {
+  margin: 0 0 var(--space-md);
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}
+
+.legal strong {
+  color: var(--color-text);
+}
+
+.legal .detail-section-title {
+  margin-top: var(--space-lg);
+  font-size: 1.1rem;
 }
 
 .hero {
