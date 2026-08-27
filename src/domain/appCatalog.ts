@@ -72,7 +72,7 @@ const APP_CATALOG: readonly AppEntry[] = [
     status: 'available',
     tagline: 'Plays the daily grind in Hero Wars: Alliance while you do something else.',
     description:
-      'An Android app that plays two things for you: the guild dungeon, and the brawl events that come round every few weeks. It works by reading the screen — the game is one canvas with no buttons to press programmatically — so it screenshots, works out which screen is showing, taps, and repeats. Anything it does not recognise stops the run and keeps the frame, rather than tapping and hoping.',
+      'An Android app that plays two things for you: the guild dungeon, and the brawl events that come round every few weeks. It works by reading the screen, so it screenshots, works out which screen is showing, taps, and repeats. Anything it does not recognise stops the run, rather than tapping and hoping.',
     features: [
       'Guild dungeon: picks the battle, swaps the damaged tank in, collects the rewards',
       'Brawls: attacks the weaker of the two opponents every time, and skips the fight',
