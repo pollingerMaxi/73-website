@@ -1,7 +1,11 @@
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
+
 const SITE_DOMAIN = 'seventhree.dev'
 const CONTACT_EMAIL = 'support@seventhree.dev'
 
 export function DisclaimerPage() {
+  useDocumentTitle('Disclaimer')
+
   return (
     <article className="detail legal">
       <h1 className="detail-title">Disclaimer</h1>

@@ -1,10 +1,14 @@
 import { Link, Outlet } from 'react-router-dom'
 import { NavMenu } from './NavMenu'
+import { trackFooterClick } from '../analytics/events'
+import { usePageViewTracking } from '../analytics/usePageViewTracking'
 
 const SITE_NAME = '73'
 const SITE_DOMAIN = 'seventhree.dev'
 
 export function SiteLayout() {
+  usePageViewTracking()
+
   return (
     <div className="site">
       <header className="site-header">
@@ -37,7 +41,9 @@ export function SiteLayout() {
             their respective owners and are used only to describe what a tool works
             with. Automating a game may breach its terms of service, and doing so is
             your own decision and your own risk — please read the{' '}
-            <Link to="/disclaimer">full disclaimer</Link>.
+            <Link to="/disclaimer" onClick={() => trackFooterClick('/disclaimer')}>
+              full disclaimer
+            </Link>.
           </p>
         </div>
       </footer>

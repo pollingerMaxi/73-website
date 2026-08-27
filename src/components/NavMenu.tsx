@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { trackMenuClick, trackMenuToggled } from '../analytics/events'
 import { listApps } from '../domain/appCatalog'
 import { StatusBadge } from './StatusBadge'
 
@@ -47,26 +48,40 @@ export function NavMenu() {
         aria-expanded={isOpen}
         aria-controls={MENU_ID}
         aria-label={isOpen ? 'Close menu' : 'Open menu'}
-        onClick={() => setIsOpen((open) => !open)}
+        onClick={() => {
+          // Reporting happens here rather than inside the state updater: React may call an
+          // updater more than once, and an updater that is not pure would report each time.
+          trackMenuToggled(!isOpen)
+          setIsOpen(!isOpen)
+        }}
       >
         <span className="nav-toggle-bars" aria-hidden="true" />
       </button>
 
       {isOpen && (
         <nav className="nav-panel" id={MENU_ID} aria-label="Primary">
-          <Link to="/" className="nav-link">
+          <Link to="/" className="nav-link" onClick={() => trackMenuClick('Home', '/')}>
             Home
           </Link>
 
           <p className="nav-heading">Apps</p>
           {listApps().map((app) => (
-            <Link key={app.id} to={`/apps/${app.id}`} className="nav-link nav-link-app">
+            <Link
+              key={app.id}
+              to={`/apps/${app.id}`}
+              className="nav-link nav-link-app"
+              onClick={() => trackMenuClick(app.name, `/apps/${app.id}`)}
+            >
               <span className="nav-link-name">{app.name}</span>
               <StatusBadge status={app.status} />
             </Link>
           ))}
 
-          <Link to="/disclaimer" className="nav-link nav-link-secondary">
+          <Link
+            to="/disclaimer"
+            className="nav-link nav-link-secondary"
+            onClick={() => trackMenuClick('Disclaimer', '/disclaimer')}
+          >
             Disclaimer
           </Link>
         </nav>

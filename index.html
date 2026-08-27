@@ -21,6 +21,19 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Google Analytics. send_page_view is off because this is a client-routed
+         site: the tag's own view would fire once on load and never again, so
+         views are sent per route from src/analytics instead. -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-SNXFTYLZHT"></script>
+    <script>
+      window.dataLayer = window.dataLayer || []
+      function gtag() {
+        dataLayer.push(arguments)
+      }
+      gtag('js', new Date())
+      gtag('config', 'G-SNXFTYLZHT', { send_page_view: false })
+    </script>
   </head>
   <body>
     <div id="root"></div>

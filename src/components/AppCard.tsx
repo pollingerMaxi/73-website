@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { PLATFORM_LABELS, type AppEntry } from '../domain/appCatalog'
+import { trackAppCardClick } from '../analytics/events'
 import { PlatformIcon } from './PlatformIcon'
 import { StatusBadge } from './StatusBadge'
 
@@ -19,7 +20,11 @@ export function AppCard({ app }: AppCardProps) {
       <h3 className="card-title">{app.name}</h3>
       <p className="card-tagline">{app.tagline}</p>
 
-      <Link to={`/apps/${app.id}`} className="button button-primary">
+      <Link
+        to={`/apps/${app.id}`}
+        className="button button-primary"
+        onClick={() => trackAppCardClick(app.id, app.name, app.status)}
+      >
         View details
       </Link>
     </article>

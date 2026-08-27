@@ -1,4 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
+import { trackBackToApps, trackOutboundClick } from '../analytics/events'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { PlatformIcon } from '../components/PlatformIcon'
 import { SideloadDownload } from '../components/SideloadDownload'
 import { StatusBadge } from '../components/StatusBadge'
@@ -9,13 +11,21 @@ export function AppDetailPage() {
   const { appId } = useParams()
   const app = findAppById(appId)
 
+  // Matches the title NotFoundPage sets, so the fallback below does not report two different
+  // titles for the same view.
+  useDocumentTitle(app ? app.name : 'Page not found')
+
   if (!app) {
     return <NotFoundPage />
   }
 
   return (
     <article className="detail">
-      <Link to="/" className="back-link">
+      <Link
+        to="/"
+        className="back-link"
+        onClick={() => trackBackToApps(app.id)}
+      >
         ← Back to apps
       </Link>
 
@@ -38,6 +48,7 @@ export function AppDetailPage() {
 
       {app.sideload ? (
         <SideloadDownload
+          appId={app.id}
           manifestUrl={app.sideload.manifestUrl}
           installsAs={app.sideload.installsAs}
         />
@@ -47,6 +58,9 @@ export function AppDetailPage() {
           href={app.download.url}
           target="_blank"
           rel="noreferrer"
+          onClick={() =>
+            trackOutboundClick(app.download!.url, app.download!.label, app.id)
+          }
         >
           {app.download.label}
         </a>

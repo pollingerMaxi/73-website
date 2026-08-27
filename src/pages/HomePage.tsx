@@ -1,8 +1,11 @@
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { AppCard } from '../components/AppCard'
 import { listApps } from '../domain/appCatalog'
 
 export function HomePage() {
   const apps = listApps()
+
+  useDocumentTitle()
 
   return (
     <>

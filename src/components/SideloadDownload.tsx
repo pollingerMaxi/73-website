@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { trackFileDownload } from '../analytics/events'
 
 /**
  * What the release pipeline writes beside the APK on every build.
@@ -30,9 +31,11 @@ type LoadState =
  * and does not prove.
  */
 export function SideloadDownload({
+  appId,
   manifestUrl,
   installsAs,
 }: {
+  readonly appId: string
   readonly manifestUrl: string
   readonly installsAs?: string
 }) {
@@ -73,7 +76,12 @@ export function SideloadDownload({
 
   return (
     <section className="sideload">
-      <a className="button button-primary" href={manifest.apk} download>
+      <a
+        className="button button-primary"
+        href={manifest.apk}
+        download
+        onClick={() => trackFileDownload(appId, manifest.apk, manifest.version)}
+      >
         Download {manifest.version} for Android
       </a>
 
