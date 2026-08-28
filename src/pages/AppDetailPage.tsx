@@ -46,6 +46,48 @@ export function AppDetailPage() {
         ))}
       </ul>
 
+      {app.limitations ? (
+        <>
+          <h2 className="detail-section-title">What it does not do</h2>
+          <ul className="feature-list">
+            {app.limitations.map((limitation) => (
+              <li key={limitation}>{limitation}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {app.setup ? (
+        <>
+          <h2 className="detail-section-title">Setting it up</h2>
+          <ol className="setup-list">
+            {app.setup.map((step) => (
+              <li key={step.title}>
+                <strong className="setup-step-title">{step.title}</strong>
+                <span className="setup-step-detail">
+                  {step.detail}
+                  {step.link ? (
+                    <>
+                      {' '}
+                      <a
+                        href={step.link.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() =>
+                          trackOutboundClick(step.link!.url, step.link!.label, app.id)
+                        }
+                      >
+                        {step.link.label}
+                      </a>
+                    </>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
+
       {app.sideload ? (
         <SideloadDownload
           appId={app.id}
