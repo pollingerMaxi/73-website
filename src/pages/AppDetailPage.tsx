@@ -3,6 +3,7 @@ import { trackBackToApps, trackOutboundClick } from '../analytics/events'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { PlatformIcon } from '../components/PlatformIcon'
 import { SideloadDownload } from '../components/SideloadDownload'
+import { UserscriptDownload } from '../components/UserscriptDownload'
 import { StatusBadge } from '../components/StatusBadge'
 import { PLATFORM_LABELS, findAppById } from '../domain/appCatalog'
 import { NotFoundPage } from './NotFoundPage'
@@ -88,7 +89,9 @@ export function AppDetailPage() {
         </>
       ) : null}
 
-      {app.sideload ? (
+      {app.userscript ? (
+        <UserscriptDownload appId={app.id} manifestUrl={app.userscript.manifestUrl} />
+      ) : app.sideload ? (
         <SideloadDownload
           appId={app.id}
           manifestUrl={app.sideload.manifestUrl}

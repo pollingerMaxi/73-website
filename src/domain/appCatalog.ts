@@ -25,6 +25,14 @@ export interface AppEntry {
   readonly limitations?: readonly string[]
   /** How to get it running, for anything that is not a single download. */
   readonly setup?: readonly SetupStep[]
+  /**
+   * Where to find the manifest for a userscript published from this site.
+   *
+   * Its own field rather than `sideload`, because the two downloads warrant different words: one
+   * asks somebody to turn off a security feature and hand over an accessibility service, and the
+   * other is a readable file that an extension shows you before it runs.
+   */
+  readonly userscript?: { readonly manifestUrl: string }
   readonly download?: ExternalLink
   /**
    * Where to find the build manifest, for an app distributed as an APK from this site.
@@ -113,10 +121,7 @@ const APP_CATALOG: readonly AppEntry[] = [
           'Go to Guild → Dungeon yourself and field a full team. A small panel sits at the top left of the game with Run, Stop, and the room order. Drag the order into whatever suits your roster; it is remembered.',
       },
     ],
-    download: {
-      label: 'Download the userscript',
-      url: 'https://seventhree.dev/downloads/hwa-dungeon.user.js',
-    },
+    userscript: { manifestUrl: '/downloads/userscript.json' },
   },
   {
     id: 'hwa-dungeon-android',
