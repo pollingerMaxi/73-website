@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.4.0
+// @version      0.5.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -79,10 +79,11 @@
         canvasArea: { x: 0, y: 0.06, w: 1, h: 0.93943 },
         autoBattleButton: { x: 0.8724, y: 0.7743 },
         toBattleButton: { x: 0.8724, y: 0.9016 },
-        "//emptySlots": "The gold chevron on an unfilled team slot, which is how the runner refuses to fight understrength. Centres are the blob centroids measured on two empty-team frames, which agreed to within 0.005: (0.110,0.347) (0.402,0.347) (0.183,0.459) (0.329,0.458). A fifth slot near (0.256,0.35) is omitted because the 'Choose titans to enter battle' banner covers all but its tip. Do not widen this by colour - a full team produces MORE gold blobs in the arena than an empty one (35 against 10) because titan armour is gold, so it is the size, shape and position together that identify the marker.",
+        "//emptySlots": "The gold chevron on an unfilled team slot, which is how the runner refuses to fight understrength. The formation is five: three across the top at 0.110, 0.253 and 0.402, and two below at 0.183 and 0.329. Four are blob centroids measured on two empty-team frames that agreed to within 0.005. The fifth could not be measured that way - the 'Choose titans to enter battle' banner covers all but its tip, and that banner is only drawn on a completely EMPTY team - so it was derived instead from a live four-of-five frame: the three occupied slots whose centres were already known each sat 0.005 from their titan's name plate, spread 0.004, and the fourth titan's plate put the remaining slot at 0.253. Do not widen this by colour - a full team produces MORE gold blobs in the arena than an empty one (35 against 10) because titan armour is gold, so it is size, shape and position together that identify the marker.",
         emptySlots: {
           centers: [
             { x: 0.11, y: 0.347 },
+            { x: 0.253, y: 0.347 },
             { x: 0.402, y: 0.347 },
             { x: 0.183, y: 0.459 },
             { x: 0.329, y: 0.458 }
@@ -1492,6 +1493,7 @@
   var BATTLE_ATTEMPTS_WITHOUT_DELAY = 200;
   var MAX_CHAINED_SAVE_POINT_DIALOGS = 2;
   var GATE_SETTLE_TOLERANCE = 0.01;
+  var EMPTY_SLOT_CONFIRMATIONS = 3;
   var DEAD_HEALTH_THRESHOLD = 0.02;
   var MAX_STUCK_ROUNDS = 3;
   var RunAbortedError = class extends Error {
@@ -1743,11 +1745,9 @@
      * costs the day.
      */
     async refuseUnderstrengthTeam() {
-      const screenshot = await this.session.screenshot();
-      this.lastScreenshot = screenshot;
       const { centers, marker } = this.config.coordinates.teamSelect.emptySlots;
-      const empty = await findEmptyTeamSlots(screenshot, centers, marker);
       const { requiredTitans, allowIncompleteTeam } = this.config.strategy.team;
+      const empty = await this.emptySlotsAgreedAcrossFrames();
       if (empty.length === 0) return;
       if (allowIncompleteTeam) {
         this.log(
@@ -1758,6 +1758,56 @@
       throw await this.abort(
         `${empty.length} team slot(s) are still empty (slots ${empty.join(", ")} of ${centers.length} checked), short of ${requiredTitans}. Fielding an understrength team loses the battle and the titans with it, so nothing was clicked. Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.`
       );
+    }
+    /**
+     * The slots that read as empty on most of several frames, rather than on one.
+     *
+     * A marker is static UI and reads the same on every frame. The artwork around
+     * it is not: a run stopped on a mixed floor insisting a slot was empty while
+     * five titans stood on the field, and the slot in question was the one Moloch
+     * occupies - lantern first, flames animating. A flame is gold, and on some
+     * frames it happened to be marker-sized, marker-shaped, and to cover the slot
+     * by as much as a marker does. Re-measuring the very same screen a minute
+     * later found nothing there at all.
+     *
+     * So the reading is voted on. A flicker carries one frame out of three; a
+     * marker carries all three. Majority rather than unanimity, because both kinds
+     * of mistake are on the table: demanding unanimity would let one bad frame
+     * hide a genuinely empty slot, and that is the expensive direction.
+     *
+     * Extra frames are only taken when the first one reports something, so the
+     * ordinary case - a full team, nothing flagged - still costs a single frame.
+     */
+    async emptySlotsAgreedAcrossFrames() {
+      const { centers, marker } = this.config.coordinates.teamSelect.emptySlots;
+      const readSlots = async () => {
+        const frame = await this.session.screenshot();
+        this.lastScreenshot = frame;
+        return findEmptyTeamSlots(frame, centers, marker);
+      };
+      const first = await readSlots();
+      if (first.length === 0) return [];
+      const votes = /* @__PURE__ */ new Map();
+      const tally = (slots) => {
+        for (const slot of slots) votes.set(slot, (votes.get(slot) ?? 0) + 1);
+      };
+      tally(first);
+      for (let round = 1; round < EMPTY_SLOT_CONFIRMATIONS; round += 1) {
+        tally(await readSlots());
+      }
+      const majority = Math.ceil(EMPTY_SLOT_CONFIRMATIONS / 2);
+      const agreed = [];
+      const flickered = [];
+      for (const [slot, count] of [...votes.entries()].sort((a, b) => a[0] - b[0])) {
+        if (count >= majority) agreed.push(slot);
+        else flickered.push(`slot ${slot}: ${count}/${EMPTY_SLOT_CONFIRMATIONS}`);
+      }
+      if (flickered.length > 0) {
+        this.log(
+          `  ignoring ${flickered.length} slot(s) that only looked empty on some frames (${flickered.join(", ")}); animated artwork reads differently frame to frame, a marker does not.`
+        );
+      }
+      return agreed;
     }
     /**
      * Puts the candidate that needs healing into the rotating team slot.
