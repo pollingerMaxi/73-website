@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.9.0
+// @version      0.10.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -1491,12 +1491,18 @@
   var MAX_CHAINED_SAVE_POINT_DIALOGS = 2;
   var GATE_SETTLE_TOLERANCE = 0.01;
   var EMPTY_SLOT_CONFIRMATIONS = 3;
+  var UNDERSTRENGTH_CONFIRMATIONS = 3;
+  var UNDERSTRENGTH_SETTLE_MS = 700;
   var DEAD_HEALTH_THRESHOLD = 0.02;
   var MAX_STUCK_ROUNDS = 3;
   function describeEmptySlots(empty, checked) {
     const names = empty.map((slot) => `slot ${slot}`);
     const named = names.length <= 1 ? names[0] ?? "no slot" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
     return empty.length === 1 ? `${named} of the ${checked} checked still shows its empty marker` : `${named} of the ${checked} checked still show their empty markers`;
+  }
+  function describeTickCount(fielded, required) {
+    if (fielded === void 0) return "the roster strip could not be read";
+    return `${fielded} of ${required} titans ticked in the roster`;
   }
   var RunAbortedError = class extends Error {
     constructor(message, screenshotPath) {
@@ -1749,13 +1755,22 @@
     async refuseUnderstrengthTeam() {
       const { centers, marker } = this.config.coordinates.teamSelect.emptySlots;
       const { requiredTitans, allowIncompleteTeam } = this.config.strategy.team;
-      const fielded = await this.countFieldedCards();
-      if (fielded >= requiredTitans) {
-        this.log(`  ${fielded} titans are ticked in the roster; the team is full.`);
-        return;
+      let empty = [];
+      let fielded;
+      for (let attempt = 1; attempt <= UNDERSTRENGTH_CONFIRMATIONS; attempt += 1) {
+        fielded = await this.countFieldedCards();
+        if (fielded !== void 0 && fielded >= requiredTitans) {
+          this.log(`  ${fielded} titans are ticked in the roster; the team is full.`);
+          return;
+        }
+        empty = await this.emptySlotsAgreedAcrossFrames();
+        if (empty.length === 0) return;
+        if (attempt === UNDERSTRENGTH_CONFIRMATIONS) break;
+        this.log(
+          `  the team reads short (${describeTickCount(fielded, requiredTitans)}, ${describeEmptySlots(empty, centers.length)}); the screen may still be assembling, so waiting ${UNDERSTRENGTH_SETTLE_MS}ms and looking again (${attempt} of ${UNDERSTRENGTH_CONFIRMATIONS - 1}).`
+        );
+        await this.session.wait(UNDERSTRENGTH_SETTLE_MS);
       }
-      const empty = await this.emptySlotsAgreedAcrossFrames();
-      if (empty.length === 0) return;
       if (allowIncompleteTeam) {
         this.log(
           `  ${empty.length} team slot(s) are empty, short of ${requiredTitans}, but incomplete teams are allowed; going in anyway.`
@@ -1763,29 +1778,32 @@
         return;
       }
       throw await this.abort(
-        `The team is short of ${requiredTitans}: ${describeEmptySlots(empty, centers.length)}. Fielding an understrength team loses the battle and the titans with it, so nothing was clicked. Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.`
+        `The team is short of ${requiredTitans}: ${describeEmptySlots(empty, centers.length)}, and ${describeTickCount(fielded, requiredTitans)}, after ${UNDERSTRENGTH_CONFIRMATIONS} readings ${UNDERSTRENGTH_SETTLE_MS}ms apart. Fielding an understrength team loses the battle and the titans with it, so nothing was clicked. Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.`
       );
     }
     /**
-     * How many roster cards carry the in-team tick, or zero if they cannot be read.
+     * How many roster cards carry the in-team tick, or undefined if the strip
+     * could not be read at all.
      *
-     * Zero on failure rather than a throw, because this is an optimisation over the
-     * marker check rather than a replacement: not being able to count ticks means
-     * falling back to the markers, which is where this started.
+     * The two are worth telling apart even though both fall through to the marker
+     * check, because they say different things about a run that stopped here: a
+     * count means the strip was read and the ticks were not there, while undefined
+     * means the strip itself was not on screen yet - which is what a half-drawn
+     * team-select screen looks like.
      */
     async countFieldedCards() {
       try {
         const screenshot = await this.session.screenshot();
         this.lastScreenshot = screenshot;
         const geometry = await this.rosterGeometry.forFrame(screenshot);
-        if (!geometry) return 0;
+        if (!geometry) return void 0;
         let fielded = 0;
         for (let index = 0; index < geometry.visibleCardCount; index += 1) {
           if (await isCardFielded(screenshot, index, geometry)) fielded += 1;
         }
         return fielded;
       } catch {
-        return 0;
+        return void 0;
       }
     }
     /**
@@ -2135,6 +2153,7 @@ Screenshot saved to ${path}`, path);
     /** Resolvers waiting for the next painted frame. */
     pending = [];
     hooked = false;
+    contextWatched = false;
     describe() {
       const { width, height } = this.calibratedViewport;
       return `the page this script is running in (canvas ${this.canvas.width}x${this.canvas.height}, presented as ${width}x${height})`;
@@ -2144,7 +2163,28 @@ Screenshot saved to ${path}`, path);
       if (!gl) throw new Error("The game canvas has no WebGL2 context to read.");
       this.gl = gl;
       this.hookAnimationFrame();
+      this.watchForContextLoss();
       return true;
+    }
+    /**
+     * Says so when the game loses its drawing context.
+     *
+     * Without this, a game that has crashed looks exactly like a game in a hidden
+     * tab: frames simply stop arriving, and the only account of it is a timeout
+     * twenty seconds later that cannot tell the two apart. The distinction matters
+     * because one of them is fixed by looking at the tab and the other is not.
+     */
+    watchForContextLoss() {
+      if (this.contextWatched) return;
+      this.contextWatched = true;
+      this.canvas.addEventListener("webglcontextlost", () => {
+        this.notice(
+          "The game lost its WebGL context. It has crashed or been reset by the browser, and no further frames can be read until the page is reloaded."
+        );
+      });
+      this.canvas.addEventListener("webglcontextrestored", () => {
+        this.notice("The game's WebGL context came back.");
+      });
     }
     async close() {
       this.pending = [];
@@ -2355,7 +2395,7 @@ Screenshot saved to ${path}`, path);
   // src/userscript/panel.ts
   var MAX_LOG_LINES = 200;
   var PANEL_WIDTH_PX = 330;
-  function createPanel(handlers, version) {
+  function createPanel(handlers, version, journal) {
     const root = document.createElement("div");
     root.style.cssText = [
       "position:fixed",
@@ -2391,9 +2431,7 @@ Screenshot saved to ${path}`, path);
         exportButton.disabled = true;
         exportButton.textContent = "\u2026";
         try {
-          const saved = await handlers.exportDiagnostics(
-            Array.from(output.children).map((line) => line.textContent ?? "")
-          );
+          const saved = await handlers.exportDiagnostics(journal.lines());
           panel.log(`Diagnostics saved as ${saved}.`);
         } catch (error) {
           panel.log(
@@ -2574,6 +2612,15 @@ Screenshot saved to ${path}`, path);
     healing.append(healingLabel, healingRows, chooseButton, picker);
     const output = document.createElement("div");
     output.style.cssText = "max-height:260px;overflow-y:auto;padding:7px 9px;white-space:pre-wrap;word-break:break-word";
+    const showLine = (text) => {
+      const line = document.createElement("div");
+      line.textContent = text;
+      line.style.cssText = "padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.04)";
+      output.appendChild(line);
+      while (output.childElementCount > MAX_LOG_LINES) output.firstElementChild?.remove();
+      output.scrollTop = output.scrollHeight;
+    };
+    for (const line of journal.lines().slice(-MAX_LOG_LINES)) showLine(line);
     collapseButton.addEventListener("click", () => {
       collapsed = !collapsed;
       applyCollapsed();
@@ -2583,12 +2630,7 @@ Screenshot saved to ${path}`, path);
     applyCollapsed();
     const panel = {
       log(message) {
-        const line = document.createElement("div");
-        line.textContent = message;
-        line.style.cssText = "padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.04)";
-        output.appendChild(line);
-        while (output.childElementCount > MAX_LOG_LINES) output.firstElementChild?.remove();
-        output.scrollTop = output.scrollHeight;
+        showLine(journal.append(message));
       },
       setRunning(running) {
         startButton.disabled = running;
@@ -2630,6 +2672,79 @@ Screenshot saved to ${path}`, path);
       "cursor:pointer"
     ].join(";");
     return element;
+  }
+
+  // src/userscript/runLog.ts
+  var STORAGE_KEY = "hwa-dungeon.journal";
+  var MAX_JOURNAL_LINES = 5e3;
+  var PERSIST_DELAY_MS = 1e3;
+  function openRunLog(version) {
+    const lines = readStored();
+    const carried = lines.length;
+    let persistHandle;
+    const persistSoon = () => {
+      if (persistHandle !== void 0) return;
+      persistHandle = window.setTimeout(() => {
+        persistHandle = void 0;
+        writeStored(lines);
+      }, PERSIST_DELAY_MS);
+    };
+    const persistNow = () => {
+      if (persistHandle !== void 0) window.clearTimeout(persistHandle);
+      persistHandle = void 0;
+      writeStored(lines);
+    };
+    window.addEventListener("pagehide", persistNow);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) persistNow();
+    });
+    const log = {
+      append(message) {
+        const line = `${timeOfDay()} ${message}`;
+        lines.push(line);
+        if (lines.length > MAX_JOURNAL_LINES) lines.splice(0, lines.length - MAX_JOURNAL_LINES);
+        persistSoon();
+        return line;
+      },
+      lines: () => lines,
+      clear() {
+        lines.length = 0;
+        persistNow();
+      }
+    };
+    log.append(`\u2014\u2014 page loaded, script ${version} \u2014\u2014`);
+    if (carried > 0) {
+      log.append(`   ${carried} lines above are from before this page was loaded.`);
+    }
+    return log;
+  }
+  function timeOfDay() {
+    const now = /* @__PURE__ */ new Date();
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  }
+  function readStored() {
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      const parsed = stored === null ? void 0 : JSON.parse(stored);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((line) => typeof line === "string");
+    } catch {
+      return [];
+    }
+  }
+  function writeStored(lines) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
+    } catch {
+      try {
+        window.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify(lines.slice(Math.floor(lines.length / 2)))
+        );
+      } catch {
+      }
+    }
   }
 
   // src/userscript/zip.ts
@@ -2834,10 +2949,10 @@ Screenshot saved to ${path}`, path);
 
   // src/userscript/healingRoster.ts
   var TITANS_IN_ROTATION = 2;
-  var STORAGE_KEY = "hwa-dungeon.healingTitans";
+  var STORAGE_KEY2 = "hwa-dungeon.healingTitans";
   function loadCalibratedTitans() {
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
+      const stored = window.localStorage.getItem(STORAGE_KEY2);
       const parsed = stored === null ? [] : JSON.parse(stored);
       return Array.isArray(parsed) ? parsed.filter(isCalibratedTitan) : [];
     } catch {
@@ -2846,7 +2961,7 @@ Screenshot saved to ${path}`, path);
   }
   function saveCalibratedTitans(titans) {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(titans));
+      window.localStorage.setItem(STORAGE_KEY2, JSON.stringify(titans));
     } catch {
     }
   }
@@ -2870,12 +2985,12 @@ Screenshot saved to ${path}`, path);
   }
 
   // src/userscript/priorityStore.ts
-  var STORAGE_KEY2 = "hwa-dungeon.elementPriority";
+  var STORAGE_KEY3 = "hwa-dungeon.elementPriority";
   var HEALING_KEY = "hwa-dungeon.healingSwap";
   var FULL_TEAM_KEY = "hwa-dungeon.requireFullTeam";
   function loadRanking(fallback) {
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY2);
+      const stored = window.localStorage.getItem(STORAGE_KEY3);
       const parsed = stored === null ? void 0 : JSON.parse(stored);
       return completeRanking(Array.isArray(parsed) ? parsed : void 0, fallback);
     } catch {
@@ -2884,7 +2999,7 @@ Screenshot saved to ${path}`, path);
   }
   function saveRanking(ranking) {
     try {
-      window.localStorage.setItem(STORAGE_KEY2, JSON.stringify(ranking));
+      window.localStorage.setItem(STORAGE_KEY3, JSON.stringify(ranking));
     } catch {
     }
   }
@@ -2938,7 +3053,7 @@ Screenshot saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.9.0" : "dev";
+  var SCRIPT_VERSION = true ? "0.10.0" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
@@ -2952,6 +3067,7 @@ Screenshot saved to ${path}`, path);
     let healingSwap = loadHealingSwapEnabled();
     let healingTitans = loadCalibratedTitans();
     let requireFullTeam = loadRequireFullTeam();
+    const journal = openRunLog(SCRIPT_VERSION);
     const panel = createPanel({
       start: () => {
         stopRequested = false;
@@ -3058,7 +3174,7 @@ Screenshot saved to ${path}`, path);
           }
         }
       ]
-    }, SCRIPT_VERSION);
+    }, SCRIPT_VERSION, journal);
     const log = (message) => {
       panel.log(message);
       console.log(`[dungeon] ${message}`);
