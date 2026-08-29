@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.7.0
+// @version      0.8.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -1493,6 +1493,11 @@
   var EMPTY_SLOT_CONFIRMATIONS = 3;
   var DEAD_HEALTH_THRESHOLD = 0.02;
   var MAX_STUCK_ROUNDS = 3;
+  function describeEmptySlots(empty, checked) {
+    const names = empty.map((slot) => `slot ${slot}`);
+    const named = names.length <= 1 ? names[0] ?? "no slot" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    return empty.length === 1 ? `${named} of the ${checked} checked still shows its empty marker` : `${named} of the ${checked} checked still show their empty markers`;
+  }
   var RunAbortedError = class extends Error {
     constructor(message, screenshotPath) {
       super(message);
@@ -1744,6 +1749,11 @@
     async refuseUnderstrengthTeam() {
       const { centers, marker } = this.config.coordinates.teamSelect.emptySlots;
       const { requiredTitans, allowIncompleteTeam } = this.config.strategy.team;
+      const fielded = await this.countFieldedCards();
+      if (fielded >= requiredTitans) {
+        this.log(`  ${fielded} titans are ticked in the roster; the team is full.`);
+        return;
+      }
       const empty = await this.emptySlotsAgreedAcrossFrames();
       if (empty.length === 0) return;
       if (allowIncompleteTeam) {
@@ -1753,8 +1763,30 @@
         return;
       }
       throw await this.abort(
-        `${empty.length} team slot(s) are still empty (slots ${empty.join(", ")} of ${centers.length} checked), short of ${requiredTitans}. Fielding an understrength team loses the battle and the titans with it, so nothing was clicked. Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.`
+        `The team is short of ${requiredTitans}: ${describeEmptySlots(empty, centers.length)}. Fielding an understrength team loses the battle and the titans with it, so nothing was clicked. Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.`
       );
+    }
+    /**
+     * How many roster cards carry the in-team tick, or zero if they cannot be read.
+     *
+     * Zero on failure rather than a throw, because this is an optimisation over the
+     * marker check rather than a replacement: not being able to count ticks means
+     * falling back to the markers, which is where this started.
+     */
+    async countFieldedCards() {
+      try {
+        const screenshot = await this.session.screenshot();
+        this.lastScreenshot = screenshot;
+        const geometry = await this.rosterGeometry.forFrame(screenshot);
+        if (!geometry) return 0;
+        let fielded = 0;
+        for (let index = 0; index < geometry.visibleCardCount; index += 1) {
+          if (await isCardFielded(screenshot, index, geometry)) fielded += 1;
+        }
+        return fielded;
+      } catch {
+        return 0;
+      }
     }
     /**
      * The slots that read as empty on most of several frames, rather than on one.
@@ -2882,7 +2914,7 @@ Screenshot saved to ${path}`, path);
         );
         const summary = await runner.run();
         log(
-          `Finished: ${summary.battlesCompleted} battles completed of ${summary.battlesStarted} started. Stopped because ${summary.stoppedBecause}.`
+          `Finished: ${summary.battlesCompleted} battles resolved (${summary.battlesWon} won, ${summary.battlesLost} lost). Stopped because ${summary.stoppedBecause}.`
         );
       } catch (error) {
         if (error instanceof RunAbortedError) {
