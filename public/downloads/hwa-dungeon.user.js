@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.6.0
+// @version      0.4.1
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
