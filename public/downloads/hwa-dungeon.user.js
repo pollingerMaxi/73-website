@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.6.0
+// @version      0.7.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -151,9 +151,6 @@
       captureBattleResults: true
     }
   };
-
-  // src/userscript/generated/portraits.json
-  var portraits_default = { angus: [-16.423, -24.224, -47.624, 19.978, -8.623, -8.623, -50.225, -42.424, -16.423, -13.823, -26.824, -47.624, -13.823, -19.023, 1.777, -24.224, -21.623, -37.224, -45.024, -24.224, -50.225, -45.024, -60.625, -47.624, -26.824, -32.024, -42.424, -60.625, -52.825, -52.825, -24.224, -42.424, 9.578, -29.424, -34.624, -42.424, -68.425, -58.025, -63.225, -45.024, -39.824, -39.824, -50.225, -68.425, -65.825, -45.024, -26.824, -47.624, 17.378, -16.423, -19.023, -42.424, -58.025, -34.624, -26.824, -42.424, -50.225, -52.825, -39.824, -26.824, -52.825, -11.223, -29.424, -52.825, 17.378, -6.023, 12.178, -34.624, -42.424, -47.624, -39.824, -32.024, -52.825, -65.825, -19.023, -47.624, -29.424, 19.978, -3.423, -47.624, -11.223, 6.978, 19.978, -24.224, -45.024, 48.579, 69.38, -32.024, -52.825, -65.825, 4.378, 12.178, 27.778, 71.98, -13.823, -45.024, 12.178, 61.58, 1.777, -45.024, -60.625, 17.378, 152.583, 92.781, -63.225, -65.825, 84.98, 48.579, 66.78, 103.181, 43.379, -16.423, 136.982, 90.181, 30.378, -47.624, -55.425, -34.624, 22.578, 17.378, -50.225, -11.223, 9.578, -8.623, 56.379, 110.981, 71.98, -0.823, 147.383, 126.582, 40.779, -52.825, -60.625, -45.024, -6.023, -19.023, -55.425, -3.423, -16.423, -26.824, 38.179, 118.782, 32.979, 4.378, 149.983, 144.783, 6.978, -42.424, -71.025, -52.825, -39.824, -45.024, -60.625, -0.823, -45.024, -60.625, 48.579, 116.182, -24.224, -42.424, 126.582, 147.383, 97.981, -13.823, -73.625, -68.425, -71.025, -73.625, -76.225, -26.824, -63.225, -65.825, 100.581, 142.183, -29.424, -58.025, 142.183, 131.782, 162.983, 27.778, -58.025, -68.425, -76.225, -68.425, -58.025, -52.825, -52.825, -50.225, 121.382, 131.782, 9.578, 17.378, 87.581, 116.182, 175.984, 90.181, -34.624, -58.025, -68.425, -13.823, 22.578, 19.978, -26.824, -29.424, 139.582, 53.779, 9.578, 12.178, 82.38, 95.381, 170.784, 165.583, 43.379, -45.024, -63.225, -65.825, -6.023, -8.623, -58.025, 14.778, 134.382, 64.18, 12.178, -26.824, 69.38, -19.023, 58.98, 121.382, 134.382, 40.779, -34.624, -55.425, -71.025, -68.425, -50.225, 40.779, 105.781, -6.023, 6.978, -37.224, 64.18, -47.624, -32.024, -0.823, 155.183, 157.783, 45.979, -19.023, -45.024, -42.424, -16.423, 95.381, 48.579, -19.023, -63.225, -50.225], moloch: [-100.529, -99.017, -70.286, -6.775, -3.751, -33.994, 40.102, 52.199, 79.418, 83.954, 44.638, 109.661, 41.614, -2.239, -97.504, -99.017, -97.504, -108.09, -88.432, -29.457, 46.15, 26.492, -3.751, 24.98, 34.053, 124.782, 61.272, 67.32, 21.956, -30.97, -105.065, -106.577, -58.188, -71.798, -85.407, -76.334, 2.298, 96.051, 77.906, 41.614, 52.199, 115.709, 50.687, 44.638, 52.199, -41.555, -82.383, -91.456, -23.409, 40.102, -59.701, -76.334, -40.043, 120.246, 168.635, 165.61, 52.199, 68.833, 44.638, 102.1, 62.784, -47.603, -50.628, -49.115, 11.371, 83.954, -20.385, -80.871, -68.774, -18.872, 130.831, 182.244, 68.833, -17.36, 46.15, 132.343, -14.336, -91.456, -71.798, -56.676, 44.638, 17.419, 20.444, -71.798, -67.261, -47.603, -24.921, 86.978, 53.711, -14.336, 35.565, 62.784, -38.53, -91.456, -88.432, -74.822, -37.018, 64.296, -5.263, -41.555, -70.286, -15.848, 73.369, 73.369, 11.371, 43.126, 18.931, 100.588, 5.322, -6.775, -91.456, -82.383, -24.921, 20.444, -27.945, 2.298, -58.188, 29.517, 103.612, 162.586, 43.126, 102.1, 62.784, 111.173, 21.956, 18.931, -20.385, -29.457, -8.287, -43.067, -68.774, 14.395, -53.652, 67.32, 133.855, 83.954, 68.833, 97.564, 58.247, 47.662, -20.385, -64.237, -17.36, -41.555, -23.409, -62.725, 12.883, 18.931, -61.213, -52.14, 56.735, 58.247, 109.661, 64.296, 62.784, -6.775, -68.774, -100.529, -52.14, -46.091, -21.897, -9.799, 64.296, 6.834, -15.848, -50.628, 3.81, 6.834, 58.247, 77.906, 20.444, -30.97, -6.775, -88.432, -73.31, -33.994, 124.782, 40.102, 29.517, -26.433, 8.346, -18.872, -18.872, 3.81, 20.444, 35.565, -20.385, -41.555, 23.468, -88.432, -86.919, -35.506, 94.539, 56.735, 24.98, -46.091, 12.883, -40.043, -40.043, 15.907, -3.751, -26.433, -44.579, -56.676, 9.859, -86.919, -80.871, -23.409, 93.027, 44.638, 115.709, 9.859, 40.102, -50.628, -68.774, -46.091, 2.298, 67.32, -6.775, -59.701, -29.457, -73.31, -76.334, -49.115, 86.978, -27.945, 88.491, 41.614, 38.589, -64.237, -46.091, -9.799, 31.029, 86.978, 9.859, -77.846, -73.31, -44.579, -37.018, -50.628, 82.442, -85.407, -67.261, -27.945, 38.589, 34.053, -47.603, -35.506, -2.239, 15.907, -20.385, -88.432, -99.017, -67.261, -58.188, -77.846] };
 
   // src/vision/frame.ts
   var LUMA_RED = 0.2126;
@@ -2355,6 +2352,7 @@ Screenshot saved to ${path}`, path);
     const applyCollapsed = () => {
       priority.style.display = collapsed ? "none" : "";
       options.style.display = collapsed ? "none" : "";
+      healing.style.display = collapsed ? "none" : "";
       output.style.display = collapsed ? "none" : "";
       collapseButton.textContent = collapsed ? "+" : "\u2013";
       collapseButton.title = collapsed ? "Show the panel" : "Collapse to the title bar";
@@ -2421,13 +2419,108 @@ Screenshot saved to ${path}`, path);
       }
     };
     renderToggles();
+    const healing = document.createElement("div");
+    healing.style.cssText = "padding:6px 9px;border-bottom:1px solid #3a3a44";
+    const healingLabel = document.createElement("div");
+    healingLabel.textContent = "Healing titans";
+    healingLabel.style.cssText = "opacity:0.65;margin-bottom:4px;letter-spacing:0.02em";
+    const healingRows = document.createElement("div");
+    const chooseButton = button("Choose from roster");
+    chooseButton.style.marginTop = "4px";
+    chooseButton.style.width = "100%";
+    const picker = document.createElement("div");
+    picker.style.cssText = "display:none;margin-top:5px";
+    const renderHealing = () => {
+      const titans = handlers.healingTitans();
+      healingRows.textContent = "";
+      if (titans.length === 0) {
+        const empty = document.createElement("div");
+        empty.textContent = "Nobody chosen \u2014 the swap is skipped.";
+        empty.style.cssText = "opacity:0.55;padding:1px 0";
+        healingRows.appendChild(empty);
+      }
+      titans.forEach((titan, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:6px;padding:1px 0";
+        row.style.opacity = titan.inRotation ? "1" : "0.5";
+        row.title = titan.inRotation ? "Competes for the healing slot" : "Named, but outside the rotation \u2014 move it up to use it";
+        const face = document.createElement("img");
+        face.src = titan.thumbnail;
+        face.style.cssText = "width:22px;height:30px;border-radius:3px;object-fit:cover";
+        const name = document.createElement("span");
+        name.textContent = titan.name;
+        name.style.flex = "1";
+        const up = smallButton("\u25B2", index === 0);
+        const down = smallButton("\u25BC", index === titans.length - 1);
+        const drop = smallButton("\xD7", false);
+        up.addEventListener("click", () => reorder(index, -1));
+        down.addEventListener("click", () => reorder(index, 1));
+        drop.addEventListener("click", () => {
+          const kept = titans.filter((_, at) => at !== index);
+          handlers.onHealingTitansChange(kept);
+          renderHealing();
+        });
+        row.append(face, name, up, down, drop);
+        healingRows.appendChild(row);
+      });
+    };
+    const reorder = (from, by) => {
+      const titans = [...handlers.healingTitans()];
+      const to = from + by;
+      if (to < 0 || to >= titans.length) return;
+      const moved = titans[from];
+      titans[from] = titans[to];
+      titans[to] = moved;
+      handlers.onHealingTitansChange(titans);
+      renderHealing();
+    };
+    chooseButton.addEventListener("click", () => {
+      void openPicker();
+    });
+    const openPicker = async () => {
+      picker.textContent = "";
+      picker.style.display = "block";
+      picker.textContent = "Reading the roster\u2026";
+      const result = await handlers.readRoster();
+      picker.textContent = "";
+      if ("problem" in result) {
+        const problem = document.createElement("div");
+        problem.textContent = result.problem;
+        problem.style.cssText = "opacity:0.7;padding:2px 0";
+        picker.appendChild(problem);
+        return;
+      }
+      const hint = document.createElement("div");
+      hint.textContent = "Click a titan to add it. You will be asked what to call it.";
+      hint.style.cssText = "opacity:0.6;margin-bottom:4px";
+      picker.appendChild(hint);
+      const strip = document.createElement("div");
+      strip.style.cssText = "display:flex;flex-wrap:wrap;gap:4px";
+      for (const card of result.cards) {
+        const choice = document.createElement("img");
+        choice.src = card.thumbnail;
+        choice.title = `Card ${card.index} \u2014 ${Math.round(card.health * 100)}% health`;
+        choice.style.cssText = "width:30px;height:41px;border-radius:3px;object-fit:cover;cursor:pointer;border:1px solid #4a4a56";
+        choice.addEventListener("click", () => {
+          const name = window.prompt("What do you call this titan?", `Card ${card.index}`);
+          if (name === null || name.trim().length === 0) return;
+          card.choose(name.trim());
+          renderHealing();
+          picker.style.display = "none";
+        });
+        strip.appendChild(choice);
+      }
+      picker.appendChild(strip);
+    };
+    renderHealing();
+    healing.append(healingLabel, healingRows, chooseButton, picker);
     const output = document.createElement("div");
     output.style.cssText = "max-height:260px;overflow-y:auto;padding:7px 9px;white-space:pre-wrap;word-break:break-word";
     collapseButton.addEventListener("click", () => {
       collapsed = !collapsed;
       applyCollapsed();
     });
-    root.append(header, priority, options, output);
+    root.append(header, priority, healing, options, output);
     document.body.appendChild(root);
     applyCollapsed();
     return {
@@ -2445,6 +2538,8 @@ Screenshot saved to ${path}`, path);
         title.textContent = running ? "Dungeon \u2014 running" : "Dungeon";
         for (const control of Array.from(rows.querySelectorAll("button"))) control.disabled = running;
         for (const box of Array.from(options.querySelectorAll("input"))) box.disabled = running;
+        for (const control of Array.from(healing.querySelectorAll("button"))) control.disabled = running;
+        healing.style.opacity = running ? "0.45" : "1";
         rows.style.opacity = running ? "0.45" : "1";
         options.style.opacity = running ? "0.45" : "1";
       }
@@ -2478,13 +2573,84 @@ Screenshot saved to ${path}`, path);
     return element;
   }
 
+  // src/userscript/rosterCapture.ts
+  async function captureRosterCards(frame, geometry) {
+    const cards = [];
+    for (let index = 0; index < geometry.visibleCardCount; index += 1) {
+      const box = portraitBoxForCard(index, geometry);
+      const signature = portraitSignature(frame, box);
+      const pixels = cropToRgb(frame, box);
+      if (pixels.width === 0 || pixels.height === 0) continue;
+      cards.push({
+        index,
+        signature: Array.from(signature, (value) => Number(value.toFixed(3))),
+        thumbnail: toDataUrl(pixels),
+        health: await readHealthFraction(frame, healthBarBoxForCard(index, geometry))
+      });
+    }
+    return cards;
+  }
+  function toDataUrl(pixels) {
+    const canvas = document.createElement("canvas");
+    canvas.width = pixels.width;
+    canvas.height = pixels.height;
+    const context = canvas.getContext("2d");
+    if (!context) return "";
+    const image = context.createImageData(pixels.width, pixels.height);
+    for (let index = 0; index < pixels.width * pixels.height; index += 1) {
+      image.data[index * 4] = pixels.data[index * 3] ?? 0;
+      image.data[index * 4 + 1] = pixels.data[index * 3 + 1] ?? 0;
+      image.data[index * 4 + 2] = pixels.data[index * 3 + 2] ?? 0;
+      image.data[index * 4 + 3] = 255;
+    }
+    context.putImageData(image, 0, 0);
+    return canvas.toDataURL("image/png");
+  }
+
+  // src/userscript/healingRoster.ts
+  var TITANS_IN_ROTATION = 2;
+  var STORAGE_KEY = "hwa-dungeon.healingTitans";
+  function loadCalibratedTitans() {
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      const parsed = stored === null ? [] : JSON.parse(stored);
+      return Array.isArray(parsed) ? parsed.filter(isCalibratedTitan) : [];
+    } catch {
+      return [];
+    }
+  }
+  function saveCalibratedTitans(titans) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(titans));
+    } catch {
+    }
+  }
+  function candidatesOf(titans) {
+    return titans.slice(0, TITANS_IN_ROTATION).map((titan) => titan.name);
+  }
+  function signaturesOf(titans) {
+    const signatures = {};
+    for (const titan of titans) signatures[titan.name] = [...titan.signature];
+    return signatures;
+  }
+  function staleAgainst(titans, crop) {
+    return titans.some(
+      (titan) => titan.capturedWith.w !== crop.w || titan.capturedWith.h !== crop.h || titan.capturedWith.centerY !== crop.centerY
+    );
+  }
+  function isCalibratedTitan(value) {
+    if (typeof value !== "object" || value === null) return false;
+    const titan = value;
+    return typeof titan.name === "string" && titan.name.length > 0 && Array.isArray(titan.signature) && titan.signature.length > 0 && typeof titan.thumbnail === "string" && typeof titan.capturedWith === "object" && titan.capturedWith !== null;
+  }
+
   // src/userscript/priorityStore.ts
-  var STORAGE_KEY = "hwa-dungeon.elementPriority";
+  var STORAGE_KEY2 = "hwa-dungeon.elementPriority";
   var HEALING_KEY = "hwa-dungeon.healingSwap";
   var FULL_TEAM_KEY = "hwa-dungeon.requireFullTeam";
   function loadRanking(fallback) {
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
+      const stored = window.localStorage.getItem(STORAGE_KEY2);
       const parsed = stored === null ? void 0 : JSON.parse(stored);
       return completeRanking(Array.isArray(parsed) ? parsed : void 0, fallback);
     } catch {
@@ -2493,7 +2659,7 @@ Screenshot saved to ${path}`, path);
   }
   function saveRanking(ranking) {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ranking));
+      window.localStorage.setItem(STORAGE_KEY2, JSON.stringify(ranking));
     } catch {
     }
   }
@@ -2558,6 +2724,7 @@ Screenshot saved to ${path}`, path);
     let stopRequested = false;
     let ranking = loadRanking(chrome_default.strategy.elementPriority);
     let healingSwap = loadHealingSwapEnabled();
+    let healingTitans = loadCalibratedTitans();
     let requireFullTeam = loadRequireFullTeam();
     const panel = createPanel({
       start: () => {
@@ -2572,6 +2739,54 @@ Screenshot saved to ${path}`, path);
       onRankingChange: (updated) => {
         ranking = [...updated];
         saveRanking(ranking);
+      },
+      healingTitans: () => healingTitans.map((titan, index) => ({
+        name: titan.name,
+        thumbnail: titan.thumbnail,
+        inRotation: index < TITANS_IN_ROTATION
+      })),
+      onHealingTitansChange: (rows) => {
+        const byName = new Map(healingTitans.map((titan) => [titan.name, titan]));
+        healingTitans = rows.map((row) => byName.get(row.name)).filter((titan) => titan !== void 0);
+        saveCalibratedTitans(healingTitans);
+      },
+      readRoster: async () => {
+        const roster = base.coordinates.teamSelect.roster;
+        try {
+          await session.open();
+          const frame = await session.screenshot();
+          const cards = await captureRosterCards(frame, roster);
+          if (cards.length === 0) {
+            return { problem: "No roster cards could be read from this screen." };
+          }
+          return {
+            cards: cards.map((card) => ({
+              index: card.index,
+              thumbnail: card.thumbnail,
+              health: card.health,
+              choose: (name) => {
+                healingTitans = [
+                  ...healingTitans.filter((titan) => titan.name !== name),
+                  {
+                    name,
+                    signature: card.signature,
+                    thumbnail: card.thumbnail,
+                    capturedWith: {
+                      w: roster.portraitArt.w,
+                      h: roster.portraitArt.h,
+                      centerY: roster.portraitArt.centerY
+                    }
+                  }
+                ];
+                saveCalibratedTitans(healingTitans);
+              }
+            }))
+          };
+        } catch (error) {
+          return {
+            problem: `Could not read the roster: ${error instanceof Error ? error.message : String(error)}`
+          };
+        }
       },
       toggles: () => [
         {
@@ -2598,6 +2813,7 @@ Screenshot saved to ${path}`, path);
       panel.log(message);
       console.log(`[dungeon] ${message}`);
     };
+    const base = chrome_default;
     const session = new BrowserGameSession(
       canvas,
       settings.viewport,
@@ -2627,11 +2843,21 @@ Screenshot saved to ${path}`, path);
           return;
         }
         log(`Dungeon screen found (${ready}). Starting the run.`);
-        const base = chrome_default;
         log(`Room priority: ${ranking.join(" > ")}.`);
+        const electing = candidatesOf(healingTitans);
         log(
-          `Healing swap ${healingSwap ? "on" : "off"}; ${requireFullTeam ? "a full team is required" : "incomplete teams are allowed"}.`
+          `Healing swap ${healingSwap && electing.length > 0 ? `on for ${electing.join(", ")}` : "off"}; ${requireFullTeam ? "a full team is required" : "incomplete teams are allowed"}.`
         );
+        if (healingSwap && electing.length === 0) {
+          log(
+            "  Nobody is chosen for the healing slot, so the swap is skipped. Pick your titans with 'Choose from roster' on a team-select screen."
+          );
+        }
+        if (staleAgainst(healingTitans, base.coordinates.teamSelect.roster.portraitArt)) {
+          log(
+            "  Some chosen portraits were cut with an older crop and will not match. Choose them from the roster again."
+          );
+        }
         const runner = new DungeonRunner(
           session,
           {
@@ -2641,13 +2867,17 @@ Screenshot saved to ${path}`, path);
               elementPriority: ranking,
               healing: {
                 ...base.strategy.healing,
-                candidates: healingSwap ? base.strategy.healing.candidates : []
+                // Whoever this browser was told about, and nobody otherwise. The
+                // config's own list is the reference account's and is deliberately
+                // not used here: electing a titan cannot be derived from pixels, so
+                // a default would be a guess about whose account this is.
+                candidates: healingSwap ? candidatesOf(healingTitans) : []
               },
               team: { ...base.strategy.team, allowIncompleteTeam: !requireFullTeam }
             }
           },
           log,
-          new PrecomputedPortraits(portraits_default),
+          new PrecomputedPortraits(signaturesOf(healingTitans)),
           () => stopRequested
         );
         const summary = await runner.run();
