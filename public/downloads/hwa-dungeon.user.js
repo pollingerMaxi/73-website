@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.5.0
+// @version      0.6.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -1817,6 +1817,10 @@
      * incoming titan against a full team does nothing at all.
      */
     async placeHealingTitan() {
+      if (this.config.strategy.healing.candidates.length === 0) {
+        this.log("  Healing swap is off: no candidates are configured. Leaving the team as it is.");
+        return;
+      }
       const screenshot = await this.session.screenshot();
       this.lastScreenshot = screenshot;
       const geometry = await this.geometryFor(screenshot);
@@ -2350,6 +2354,7 @@ Screenshot saved to ${path}`, path);
     let collapsed = false;
     const applyCollapsed = () => {
       priority.style.display = collapsed ? "none" : "";
+      options.style.display = collapsed ? "none" : "";
       output.style.display = collapsed ? "none" : "";
       collapseButton.textContent = collapsed ? "+" : "\u2013";
       collapseButton.title = collapsed ? "Show the panel" : "Collapse to the title bar";
@@ -2393,13 +2398,36 @@ Screenshot saved to ${path}`, path);
       });
     };
     renderRanking();
+    const options = document.createElement("div");
+    options.style.cssText = "padding:6px 9px;border-bottom:1px solid #3a3a44";
+    const renderToggles = () => {
+      options.textContent = "";
+      for (const toggle of handlers.toggles()) {
+        const row = document.createElement("label");
+        row.title = toggle.title;
+        row.style.cssText = "display:flex;align-items:center;gap:6px;padding:1px 0;cursor:pointer";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = toggle.checked;
+        box.style.cssText = "margin:0;accent-color:#7aa2d8";
+        box.addEventListener("change", () => {
+          toggle.onChange(box.checked);
+          renderToggles();
+        });
+        const text = document.createElement("span");
+        text.textContent = toggle.label;
+        row.append(box, text);
+        options.appendChild(row);
+      }
+    };
+    renderToggles();
     const output = document.createElement("div");
     output.style.cssText = "max-height:260px;overflow-y:auto;padding:7px 9px;white-space:pre-wrap;word-break:break-word";
     collapseButton.addEventListener("click", () => {
       collapsed = !collapsed;
       applyCollapsed();
     });
-    root.append(header, priority, output);
+    root.append(header, priority, options, output);
     document.body.appendChild(root);
     applyCollapsed();
     return {
@@ -2416,7 +2444,9 @@ Screenshot saved to ${path}`, path);
         stopButton.disabled = !running;
         title.textContent = running ? "Dungeon \u2014 running" : "Dungeon";
         for (const control of Array.from(rows.querySelectorAll("button"))) control.disabled = running;
+        for (const box of Array.from(options.querySelectorAll("input"))) box.disabled = running;
         rows.style.opacity = running ? "0.45" : "1";
+        options.style.opacity = running ? "0.45" : "1";
       }
     };
   }
@@ -2450,6 +2480,8 @@ Screenshot saved to ${path}`, path);
 
   // src/userscript/priorityStore.ts
   var STORAGE_KEY = "hwa-dungeon.elementPriority";
+  var HEALING_KEY = "hwa-dungeon.healingSwap";
+  var FULL_TEAM_KEY = "hwa-dungeon.requireFullTeam";
   function loadRanking(fallback) {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -2462,6 +2494,34 @@ Screenshot saved to ${path}`, path);
   function saveRanking(ranking) {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ranking));
+    } catch {
+    }
+  }
+  function loadHealingSwapEnabled() {
+    return readFlag(HEALING_KEY, true);
+  }
+  function saveHealingSwapEnabled(enabled) {
+    writeFlag(HEALING_KEY, enabled);
+  }
+  function loadRequireFullTeam() {
+    return readFlag(FULL_TEAM_KEY, true);
+  }
+  function saveRequireFullTeam(required) {
+    writeFlag(FULL_TEAM_KEY, required);
+  }
+  function readFlag(key, fallback) {
+    try {
+      const stored = window.localStorage.getItem(key);
+      if (stored === null) return fallback;
+      const parsed = JSON.parse(stored);
+      return typeof parsed === "boolean" ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  function writeFlag(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
     } catch {
     }
   }
@@ -2497,6 +2557,8 @@ Screenshot saved to ${path}`, path);
     if (!settings) throw new Error("config.session.chrome is missing; it carries the calibrated viewport.");
     let stopRequested = false;
     let ranking = loadRanking(chrome_default.strategy.elementPriority);
+    let healingSwap = loadHealingSwapEnabled();
+    let requireFullTeam = loadRequireFullTeam();
     const panel = createPanel({
       start: () => {
         stopRequested = false;
@@ -2510,7 +2572,27 @@ Screenshot saved to ${path}`, path);
       onRankingChange: (updated) => {
         ranking = [...updated];
         saveRanking(ranking);
-      }
+      },
+      toggles: () => [
+        {
+          label: "Swap in a hurt titan on mixed floors",
+          title: "Off leaves the team exactly as you arranged it. It also removes the only step that needs the roster strip, so a run cannot stop for want of measuring it.",
+          checked: healingSwap,
+          onChange: (checked) => {
+            healingSwap = checked;
+            saveHealingSwapEnabled(checked);
+          }
+        },
+        {
+          label: "Refuse to fight without a full team",
+          title: "On is the safe rule: an understrength fight costs the day rather than the battle, because the titans that survive it are hurt or dead for the rest of it. Off fights with whatever is fielded.",
+          checked: requireFullTeam,
+          onChange: (checked) => {
+            requireFullTeam = checked;
+            saveRequireFullTeam(checked);
+          }
+        }
+      ]
     });
     const log = (message) => {
       panel.log(message);
@@ -2545,10 +2627,25 @@ Screenshot saved to ${path}`, path);
           return;
         }
         log(`Dungeon screen found (${ready}). Starting the run.`);
+        const base = chrome_default;
         log(`Room priority: ${ranking.join(" > ")}.`);
+        log(
+          `Healing swap ${healingSwap ? "on" : "off"}; ${requireFullTeam ? "a full team is required" : "incomplete teams are allowed"}.`
+        );
         const runner = new DungeonRunner(
           session,
-          { ...chrome_default, strategy: { ...chrome_default.strategy, elementPriority: ranking } },
+          {
+            ...base,
+            strategy: {
+              ...base.strategy,
+              elementPriority: ranking,
+              healing: {
+                ...base.strategy.healing,
+                candidates: healingSwap ? base.strategy.healing.candidates : []
+              },
+              team: { ...base.strategy.team, allowIncompleteTeam: !requireFullTeam }
+            }
+          },
           log,
           new PrecomputedPortraits(portraits_default),
           () => stopRequested

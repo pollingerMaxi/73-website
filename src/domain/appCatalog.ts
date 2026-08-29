@@ -84,8 +84,8 @@ const APP_CATALOG: readonly AppEntry[] = [
       'A userscript that plays the Hero Wars: Alliance guild dungeon in your own browser. The game paints everything into one canvas, so there are no buttons to press from the outside: it reads the pixels the game draws, works out which screen is showing, clicks, and repeats. Anything it does not recognise stops the run rather than clicking and hoping.',
     features: [
       'Picks the room by element, in an order you rank yourself: water, earth, mix and fire',
-      'Keeps the healing slot filled — swaps the hurt tank in on mixed floors and back out once it has healed',
-      'Refuses to fight with fewer than five titans, because an understrength fight costs the whole day rather than the battle',
+      'Keeps the healing slot filled — swaps the hurt tank in on mixed floors and back out once it has healed, or leave your team alone entirely',
+      'Refuses to fight with fewer than five titans, because an understrength fight costs the whole day rather than the battle — switchable off if you manage your own line-up',
       'Activates save points and collects the reward',
       'Tells a win from a loss and keeps the tally honest',
       'Runs at any window size, and stops rather than guessing on any screen it cannot read',
@@ -118,7 +118,7 @@ const APP_CATALOG: readonly AppEntry[] = [
       {
         title: 'Open the dungeon and press Run',
         detail:
-          'Go to Guild → Dungeon yourself and field a full team. A small panel sits at the top left of the game with Run, Stop, and the room order. Drag the order into whatever suits your roster; it is remembered.',
+          'Go to Guild → Dungeon yourself and field a full team. A small panel sits at the top left of the game with Run, Stop, the room order, and two switches — whether to swap a hurt titan in on mixed floors, and whether to refuse a short team. Everything you set there is remembered, and the panel collapses out of the way.',
       },
     ],
     userscript: { manifestUrl: '/downloads/userscript.json' },
