@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.8.0
+// @version      0.9.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -2355,7 +2355,7 @@ Screenshot saved to ${path}`, path);
   // src/userscript/panel.ts
   var MAX_LOG_LINES = 200;
   var PANEL_WIDTH_PX = 330;
-  function createPanel(handlers) {
+  function createPanel(handlers, version) {
     const root = document.createElement("div");
     root.style.cssText = [
       "position:fixed",
@@ -2375,10 +2375,36 @@ Screenshot saved to ${path}`, path);
     header.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 9px;background:#23232b;border-bottom:1px solid #3a3a44";
     const title = document.createElement("strong");
     title.textContent = "Dungeon";
-    title.style.cssText = "flex:1;font-weight:600;letter-spacing:0.02em";
+    title.style.cssText = "font-weight:600;letter-spacing:0.02em";
+    const versionLabel = document.createElement("span");
+    versionLabel.textContent = version;
+    versionLabel.title = "Script version";
+    versionLabel.style.cssText = "flex:1;opacity:0.5;font-size:11px";
     const startButton = button("Run");
     const stopButton = button("Stop");
     stopButton.disabled = true;
+    const exportButton = button("Logs");
+    exportButton.title = "Save a zip of the log, the settings and the screen, for a bug report";
+    exportButton.addEventListener("click", () => {
+      void (async () => {
+        const wasLabel = exportButton.textContent;
+        exportButton.disabled = true;
+        exportButton.textContent = "\u2026";
+        try {
+          const saved = await handlers.exportDiagnostics(
+            Array.from(output.children).map((line) => line.textContent ?? "")
+          );
+          panel.log(`Diagnostics saved as ${saved}.`);
+        } catch (error) {
+          panel.log(
+            `Could not save diagnostics: ${error instanceof Error ? error.message : String(error)}`
+          );
+        } finally {
+          exportButton.disabled = false;
+          exportButton.textContent = wasLabel;
+        }
+      })();
+    });
     const collapseButton = button("\u2013");
     let collapsed = false;
     const applyCollapsed = () => {
@@ -2392,7 +2418,7 @@ Screenshot saved to ${path}`, path);
     };
     startButton.addEventListener("click", () => handlers.start());
     stopButton.addEventListener("click", () => handlers.stop());
-    header.append(title, collapseButton, startButton, stopButton);
+    header.append(title, versionLabel, exportButton, collapseButton, startButton, stopButton);
     const priority = document.createElement("div");
     priority.style.cssText = "padding:6px 9px;border-bottom:1px solid #3a3a44";
     const priorityLabel = document.createElement("div");
@@ -2555,7 +2581,7 @@ Screenshot saved to ${path}`, path);
     root.append(header, priority, healing, options, output);
     document.body.appendChild(root);
     applyCollapsed();
-    return {
+    const panel = {
       log(message) {
         const line = document.createElement("div");
         line.textContent = message;
@@ -2576,6 +2602,7 @@ Screenshot saved to ${path}`, path);
         options.style.opacity = running ? "0.45" : "1";
       }
     };
+    return panel;
   }
   var ELEMENT_COLOURS = {
     water: "#6fb7e8",
@@ -2603,6 +2630,172 @@ Screenshot saved to ${path}`, path);
       "cursor:pointer"
     ].join(";");
     return element;
+  }
+
+  // src/userscript/zip.ts
+  function buildZip(entries) {
+    const chunks = [];
+    const directory = [];
+    let offset = 0;
+    for (const entry of entries) {
+      const name = new TextEncoder().encode(entry.name);
+      const crc = crc32(entry.bytes);
+      const size = entry.bytes.length;
+      const local = new Uint8Array(30 + name.length);
+      const localView = new DataView(local.buffer);
+      localView.setUint32(0, 67324752, true);
+      localView.setUint16(4, 20, true);
+      localView.setUint16(6, 0, true);
+      localView.setUint16(8, 0, true);
+      localView.setUint16(10, 0, true);
+      localView.setUint16(12, 0, true);
+      localView.setUint32(14, crc, true);
+      localView.setUint32(18, size, true);
+      localView.setUint32(22, size, true);
+      localView.setUint16(26, name.length, true);
+      localView.setUint16(28, 0, true);
+      local.set(name, 30);
+      chunks.push(local, entry.bytes);
+      const central = new Uint8Array(46 + name.length);
+      const centralView = new DataView(central.buffer);
+      centralView.setUint32(0, 33639248, true);
+      centralView.setUint16(4, 20, true);
+      centralView.setUint16(6, 20, true);
+      centralView.setUint16(8, 0, true);
+      centralView.setUint16(10, 0, true);
+      centralView.setUint16(12, 0, true);
+      centralView.setUint16(14, 0, true);
+      centralView.setUint32(16, crc, true);
+      centralView.setUint32(20, size, true);
+      centralView.setUint32(24, size, true);
+      centralView.setUint16(28, name.length, true);
+      centralView.setUint16(30, 0, true);
+      centralView.setUint16(32, 0, true);
+      centralView.setUint16(34, 0, true);
+      centralView.setUint16(36, 0, true);
+      centralView.setUint32(38, 0, true);
+      centralView.setUint32(42, offset, true);
+      central.set(name, 46);
+      directory.push(central);
+      offset += local.length + size;
+    }
+    const directoryBytes = directory.reduce((total2, part) => total2 + part.length, 0);
+    const end = new Uint8Array(22);
+    const endView = new DataView(end.buffer);
+    endView.setUint32(0, 101010256, true);
+    endView.setUint16(8, entries.length, true);
+    endView.setUint16(10, entries.length, true);
+    endView.setUint32(12, directoryBytes, true);
+    endView.setUint32(16, offset, true);
+    const parts = [...chunks, ...directory, end];
+    const total = parts.reduce((sum, part) => sum + part.length, 0);
+    const flat = new Uint8Array(total);
+    let at = 0;
+    for (const part of parts) {
+      flat.set(part, at);
+      at += part.length;
+    }
+    return new Blob([flat.buffer], { type: "application/zip" });
+  }
+  var CRC_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let index = 0; index < 256; index += 1) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        value = value & 1 ? 3988292384 ^ value >>> 1 : value >>> 1;
+      }
+      table[index] = value >>> 0;
+    }
+    return table;
+  })();
+  function crc32(bytes) {
+    let crc = 4294967295;
+    for (const byte of bytes) {
+      crc = CRC_TABLE[(crc ^ byte) & 255] ^ crc >>> 8;
+    }
+    return (crc ^ 4294967295) >>> 0;
+  }
+
+  // src/userscript/diagnostics.ts
+  function buildDiagnosticsBundle(input) {
+    const text = (value) => new TextEncoder().encode(value);
+    const entries = [
+      { name: "about.txt", bytes: text(describe(input)) },
+      { name: "log.txt", bytes: text(`${input.logLines.join("\n")}
+`) },
+      { name: "settings.json", bytes: text(`${JSON.stringify(input.settings, null, 2)}
+`) }
+    ];
+    if (input.frame) {
+      const png = frameToPng(input.frame);
+      if (png) entries.push({ name: "screen.png", bytes: png });
+    }
+    input.titans.forEach((titan, index) => {
+      const bytes = dataUrlToBytes(titan.thumbnail);
+      if (bytes) entries.push({ name: `titans/${index + 1}-${safeName(titan.name)}.png`, bytes });
+    });
+    return buildZip(entries);
+  }
+  function describe(input) {
+    const lines = [
+      `HWA dungeon userscript ${input.version}`,
+      `exported            ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      `page                ${window.location.href}`,
+      `user agent          ${window.navigator.userAgent}`,
+      `window              ${window.innerWidth}x${window.innerHeight} at dpr ${window.devicePixelRatio}`,
+      `canvas              ${input.canvas ? `${input.canvas.width}x${input.canvas.height}` : "not found"}`,
+      `frame presented as  ${input.frame ? `${input.frame.width}x${input.frame.height}` : "could not be read"}`,
+      "",
+      "Healing titans, in preference order. Only the first few compete for the slot;",
+      "each portrait is in titans/ so the faces can be checked against the roster."
+    ];
+    if (input.titans.length === 0) {
+      lines.push("  (nobody chosen - the healing swap is skipped)");
+    } else {
+      input.titans.forEach((titan, index) => {
+        const crop = titan.capturedWith;
+        lines.push(
+          `  ${index + 1}. ${titan.name}  cut with w=${crop.w} h=${crop.h} centerY=${crop.centerY}`
+        );
+      });
+    }
+    lines.push("", "Settings as stored:", JSON.stringify(input.settings, null, 2), "");
+    return lines.join("\n");
+  }
+  function frameToPng(frame) {
+    const canvas = document.createElement("canvas");
+    canvas.width = frame.width;
+    canvas.height = frame.height;
+    const context = canvas.getContext("2d");
+    if (!context) return void 0;
+    const image = context.createImageData(frame.width, frame.height);
+    image.data.set(frame.data);
+    context.putImageData(image, 0, 0);
+    return dataUrlToBytes(canvas.toDataURL("image/png"));
+  }
+  function dataUrlToBytes(dataUrl) {
+    const comma = dataUrl.indexOf(",");
+    if (comma < 0) return void 0;
+    const binary = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  }
+  function safeName(name) {
+    return name.replace(/[^a-z0-9-_]/gi, "_").slice(0, 40) || "titan";
+  }
+  function downloadBundle(bundle, version) {
+    const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").replace(/Z$/, "");
+    const fileName = `hwa-dungeon-${version}-${stamp}.zip`;
+    const url = URL.createObjectURL(bundle);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1e4);
+    return fileName;
   }
 
   // src/userscript/rosterCapture.ts
@@ -2745,12 +2938,13 @@ Screenshot saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
+  var SCRIPT_VERSION = true ? "0.9.0" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
   async function main() {
-    const canvas = await waitForGameCanvas();
-    if (!canvas) return;
+    const canvasElement = await waitForGameCanvas();
+    if (!canvasElement) return;
     const settings = chrome_default.session.chrome;
     if (!settings) throw new Error("config.session.chrome is missing; it carries the calibrated viewport.");
     let stopRequested = false;
@@ -2820,6 +3014,30 @@ Screenshot saved to ${path}`, path);
           };
         }
       },
+      exportDiagnostics: async (logLines) => {
+        let frame;
+        let canvas;
+        try {
+          await session.open();
+          frame = await session.screenshot();
+          canvas = { width: canvasElement.width, height: canvasElement.height };
+        } catch {
+        }
+        const bundle = buildDiagnosticsBundle({
+          version: SCRIPT_VERSION,
+          logLines,
+          titans: healingTitans,
+          settings: {
+            roomPriority: ranking,
+            healingSwap,
+            requireFullTeam,
+            healingTitans: healingTitans.map((titan) => titan.name)
+          },
+          frame,
+          canvas
+        });
+        return downloadBundle(bundle, SCRIPT_VERSION);
+      },
       toggles: () => [
         {
           label: "Swap in a hurt titan on mixed floors",
@@ -2840,14 +3058,14 @@ Screenshot saved to ${path}`, path);
           }
         }
       ]
-    });
+    }, SCRIPT_VERSION);
     const log = (message) => {
       panel.log(message);
       console.log(`[dungeon] ${message}`);
     };
     const base = chrome_default;
     const session = new BrowserGameSession(
-      canvas,
+      canvasElement,
       settings.viewport,
       chrome_default.coordinates.teamSelect.canvasArea,
       chrome_default.timing.betweenClicksMs,
