@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.10.0
+// @version      0.11.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -148,7 +148,9 @@
       abortOnUnknownScreen: true,
       saveScreenshotOnAbort: true,
       "//captureBattleResults": "Saves the result dialog of every battle, won or lost. Victory and defeat put their button in the same place, so the runner clicks through both identically and has never recorded a defeat - there is no frame to build the distinction from. Turn off once defeat is recognised and the frames stop being interesting.",
-      captureBattleResults: true
+      captureBattleResults: true,
+      "//stopWhenTitanDies": "Ends the run on the result dialog the moment it says a titan died, with nothing on that dialog clicked - not OK, and not the Retry beside it - so you arrive to the game exactly as the battle left it and decide for yourself whether to revive, retry or stop for the day. A death costs the day rather than the battle: a dead titan cannot be fielded again until it is revived, so every fight after one is entered a titan short, which is the same cost strategy.team.allowIncompleteTeam refuses at team select. On costs whatever attempts are left, since they sit unspent until somebody comes back. False here because off is what every configuration did before the option existed, and a run that halts unasked looks like a bug; the browser panel carries the same switch, and the Android app carries it as TeamPolicy.stopWhenTitanDies. A dialog whose casualty row cannot be read is re-read three times 700ms apart and then stops the run rather than being clicked through - see CASUALTY_READ_ATTEMPTS in DungeonRunner.ts.",
+      stopWhenTitanDies: false
     }
   };
 
@@ -664,6 +666,424 @@
     return Math.min(Math.max(value, 0), 1);
   }
 
+  // src/vision/casualties.ts
+  var MAX_TEAM_SIZE = 5;
+  var SLOT_PITCH = 0.0806;
+  var BAR_LEFT_OFFSET = -0.0281;
+  var BAR_PROBE_HALF_WIDTH = 6e-3;
+  var WORD_PROBE_HALF_WIDTH = 6e-3;
+  var BAR_GREEN = { hueMin: 45, hueMax: 125, minSaturation: 0.65 };
+  var DEAD_RED = { hueBelow: 15, hueAbove: 345, minSaturation: 0.6 };
+  var SIGNAL_MIN_COVERAGE = 0.15;
+  var STATUS_ROW_MIN_HEIGHT_IN_PITCHES = 0.22;
+  var BAND_BRIDGE_IN_PITCHES = 0.3;
+  var PORTRAIT_PROBE_TOP_IN_PITCHES = 3.2;
+  var PORTRAIT_PROBE_BOTTOM_IN_PITCHES = 1.1;
+  var PORTRAIT_PROBE_HALF_WIDTH = 0.02;
+  var PORTRAIT_MIN_RELATIVE_SPREAD = 0.4;
+  var CARD_BAND_MAX_GAP_IN_PITCHES = 0.9;
+  var CARD_BAND_MIN_HEIGHT_IN_PITCHES = 1;
+  var CARD_BAND_WINDOW_IN_PITCHES = 0.25;
+  var MAX_FRAME_ASPECT = 2.27;
+  function bestBandFor(bands) {
+    const ranked = bands.slice().sort((a, b) => {
+      const byDeath = Number(reportsDeath(b)) - Number(reportsDeath(a));
+      return byDeath !== 0 ? byDeath : b.heightInPitches - a.heightInPitches;
+    });
+    return ranked[0];
+  }
+  function reportsDeath(band) {
+    return band.slots.some((slot) => slot.signal === "dead");
+  }
+  function readBattleCasualties(frame, dialogBody) {
+    if (dialogBody.h <= 0 || dialogBody.w <= 0 || frame.width === 0 || frame.height === 0) {
+      return unreadable("the dialog has no body between its banner and its buttons", 0);
+    }
+    const aspect = frame.width / frame.height;
+    if (aspect > MAX_FRAME_ASPECT) {
+      return refused(
+        "unsupportedFrameShape",
+        `the frame is ${frame.width}x${frame.height}, an aspect of ${aspect.toFixed(4)}, wider than the ${MAX_FRAME_ASPECT} the team lattice survives; if the game is pillarboxed on this screen the cards are not where a fraction of the frame's width says they are`,
+        0
+      );
+    }
+    const scan = new DialogScan(frame, dialogBody);
+    const refusals = [];
+    for (let size = MAX_TEAM_SIZE; size >= 1; size -= 1) {
+      const row = scan.statusRowFor(size);
+      if (!row) continue;
+      const reading = scan.confirmAgainstPortraits(size, row);
+      if (reading.verdict !== "unreadable") return reading;
+      refusals.push(reading.diagnostics);
+      if (reading.outboardCard) break;
+    }
+    const [widest, ...rest] = refusals;
+    const setAside = scan.bandsSetAside;
+    const reason = widest === void 0 ? "no status row under the portraits: no lattice of 1 to 5 cards had every card showing exactly one of a health bar and a DEAD word" : `${widest}${rest.length > 0 ? ` (and ${rest.length} narrower lattice(s) likewise)` : ""}`;
+    return unreadable(setAside === void 0 ? reason : `${reason}; ${setAside}`, scan.scannedFraction);
+  }
+  var DialogScan = class {
+    /**
+     * @param bandBridgeInPitches defaults to the shipped {@link BAND_BRIDGE_IN_PITCHES}. A parameter
+     *   only so a test can walk it down and watch what breaks, which is how that constant was measured
+     *   on the Kotlin side in the first place - and the one death in the corpus turns out to depend on
+     *   it, so "measured by hand once" was not good enough for it.
+     * @param cardBandMaxGapInPitches defaults to the shipped {@link CARD_BAND_MAX_GAP_IN_PITCHES}. A
+     *   parameter for the same reason and a sharper one: passing `Infinity` here turns the distance gate
+     *   off, which is how both suites show what it is holding out rather than only that the corpus is
+     *   green with it in. A rule whose absence cannot be demonstrated is a rule nobody can check.
+     */
+    constructor(frame, body, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES) {
+      this.frame = frame;
+      this.body = body;
+      this.cardBandMaxGapInPitches = cardBandMaxGapInPitches;
+      this.aspect = frame.width / frame.height;
+      this.pitchY = SLOT_PITCH / this.aspect;
+      this.rowsPerPitch = this.pitchY * frame.height;
+      this.bandBridgeRows = Math.max(1, Math.round(bandBridgeInPitches * this.rowsPerPitch));
+    }
+    aspect;
+    pitchY;
+    rowsPerPitch;
+    bandBridgeRows;
+    probes = /* @__PURE__ */ new Map();
+    cardBands = /* @__PURE__ */ new Map();
+    bands = /* @__PURE__ */ new Map();
+    setAside = [];
+    scannedPixels = 0;
+    /** Share of the frame every crop taken so far has covered. */
+    get scannedFraction() {
+      return this.scannedPixels / (this.frame.width * this.frame.height);
+    }
+    /** {@link STATUS_ROW_MIN_HEIGHT_IN_PITCHES} in rows of this frame. Two rows at the very least. */
+    get statusRowMinRows() {
+      return Math.max(2, Math.round(STATUS_ROW_MIN_HEIGHT_IN_PITCHES * this.rowsPerPitch));
+    }
+    /**
+     * What the distance gate threw away, in the words a refusal needs.
+     *
+     * Undefined when it threw nothing away, so a caller can leave the sentence out rather than print
+     * "0 bands". §3.2: a refusal that names only the rule that fired leaves the log unable to say what
+     * the dialog actually had on it, and on a loot frame what it had on it is the whole story.
+     */
+    get bandsSetAside() {
+      if (this.setAside.length === 0) return void 0;
+      const measured = this.setAside.filter((gap) => Number.isFinite(gap));
+      const unanchored = this.setAside.length - measured.length;
+      if (measured.length === 0) {
+        return `${unanchored} band(s) closed with no card band above them at all`;
+      }
+      const tail = unanchored > 0 ? `, and ${unanchored} with no card band above them at all` : "";
+      return `${measured.length} band(s) closed ${Math.min(...measured).toFixed(2)}-${Math.max(...measured).toFixed(2)} pitches below the cards, past the ${CARD_BAND_MAX_GAP_IN_PITCHES} a status row sits within${tail}`;
+    }
+    /**
+     * The best band of rows over which every card of a `size`-card lattice showed exactly one signal.
+     *
+     * Bands are found first, filtered by height second and chosen third. The height floor and the
+     * choice are both applied here rather than inside the scan, which is what lets a test print the
+     * bands each of them throws away: the row that floor exists to reject is a line of gold reward text
+     * that no assertion would otherwise ever name, and a threshold whose losing side cannot be printed
+     * is a threshold nobody can check. See {@link bestBandFor} for the choice.
+     */
+    statusRowFor(size) {
+      return bestBandFor(this.bandsFor(size).filter((band) => band.rows >= this.statusRowMinRows));
+    }
+    /**
+     * Every run of rows a `size`-card lattice closes over, top of the dialog first, short ones included.
+     *
+     * Separate from {@link statusRowFor} so both of the rules that narrow this list down are named
+     * functions with tests on them rather than conditions buried in a scan - the impostor row
+     * {@link bestBandFor} has to reject appears on no frame in either corpus, so the only thing that can
+     * hold it to its rule is a test that builds the case by hand.
+     */
+    bandsFor(size) {
+      const cached = this.bands.get(size);
+      if (cached) return cached;
+      const found = this.closeBandsFor(size);
+      this.bands.set(size, found);
+      return found;
+    }
+    closeBandsFor(size) {
+      const centres = latticeCentres(size);
+      if (centres.some((centre) => centre < 0 || centre > 1)) return [];
+      const columns = centres.map((centre) => this.probeColumn(centre));
+      const cards = this.cardBandFor(size);
+      const rowCount = columns[0]?.readings.length ?? 0;
+      const bands = [];
+      let start = -1;
+      let lastAgreeing = -1;
+      for (let row = 0; row <= rowCount; row += 1) {
+        const agrees = row < rowCount && columns.every((column) => isDecisive(column.readings[row]?.signal));
+        if (agrees) {
+          if (start < 0) start = row;
+          lastAgreeing = row;
+          continue;
+        }
+        if (start < 0) continue;
+        if (row < rowCount && row - lastAgreeing <= this.bandBridgeRows) continue;
+        const top = this.toFrameY(start, rowCount);
+        const band = {
+          top,
+          bottom: this.toFrameY(lastAgreeing, rowCount),
+          rows: lastAgreeing - start + 1,
+          heightInPitches: (lastAgreeing - start + 1) / this.rowsPerPitch,
+          pitchesBelowTheCards: cards === void 0 ? Number.POSITIVE_INFINITY : (top - cards.bottom) / this.pitchY,
+          slots: columns.map(
+            (column, slot) => summarise(column.readings, start, lastAgreeing, centres[slot] ?? 0)
+          )
+        };
+        start = -1;
+        if (band.pitchesBelowTheCards > this.cardBandMaxGapInPitches) {
+          this.setAside.push(band.pitchesBelowTheCards);
+          continue;
+        }
+        bands.push(band);
+      }
+      return bands;
+    }
+    /**
+     * Where the cards end above a `size`-card lattice, and how much of a card that band was.
+     *
+     * The topmost run of structure over *every* centre of the lattice that is at least
+     * {@link CARD_BAND_MIN_HEIGHT_IN_PITCHES} tall - which is the card band on all nine result frames of
+     * both corpora, because nothing else on this dialog is that tall and above the team. Undefined when
+     * no such run exists, which is a lattice with no cards over it and so a lattice no band can be a
+     * status row for.
+     *
+     * "Topmost" and not "nearest above the band" is what keeps the loot out of the answer: the loot is
+     * drawn *below* the team, so a search that started at the band and walked up would find loot art
+     * 1.90 pitches tall sitting right against the loot band and call it the cards. Starting at the top
+     * of the dialog body reaches the real cards first, every time.
+     *
+     * Read from the two probe windows the colour reading has already cropped, so it costs no pixels.
+     * The consequence worth knowing is that it can only see the part of the card the dialog body
+     * contains: on a victory the body's top edge cuts through the card art and leaves 2.48 to 3.30
+     * pitches of it, which is what {@link CARD_BAND_MIN_HEIGHT_IN_PITCHES} has to stay under.
+     */
+    cardBandFor(size) {
+      if (this.cardBands.has(size)) return this.cardBands.get(size);
+      const centres = latticeCentres(size);
+      const band = centres.some((centre) => centre < 0 || centre > 1) ? void 0 : this.topmostCardBand(centres.map((centre) => this.probeColumn(centre)));
+      this.cardBands.set(size, band);
+      return band;
+    }
+    topmostCardBand(columns) {
+      const rowCount = columns[0]?.readings.length ?? 0;
+      const windowRows = Math.max(1, Math.round(CARD_BAND_WINDOW_IN_PITCHES * this.rowsPerPitch));
+      const minimumRows = Math.max(1, Math.round(CARD_BAND_MIN_HEIGHT_IN_PITCHES * this.rowsPerPitch));
+      const lastWindow = rowCount - windowRows;
+      let start = -1;
+      let tallestRunAbove = 0;
+      for (let window2 = 0; window2 <= lastWindow + 1; window2 += 1) {
+        const structured = window2 <= lastWindow && columns.every((column) => isCardWindow(column, window2, windowRows));
+        if (structured) {
+          if (start < 0) start = window2;
+          continue;
+        }
+        if (start < 0) continue;
+        const heightInPitches = (window2 - start) / this.rowsPerPitch;
+        if (window2 - start >= minimumRows) {
+          return {
+            bottom: this.toFrameY(window2 - 1 + windowRows, rowCount),
+            heightInPitches,
+            tallestRunAbove
+          };
+        }
+        tallestRunAbove = Math.max(tallestRunAbove, heightInPitches);
+        start = -1;
+      }
+      return void 0;
+    }
+    /**
+     * Checks a closed lattice against the cards drawn above it, and turns it into a verdict.
+     *
+     * Every card of the lattice must have a portrait, and the two positions immediately outboard of it
+     * must not. Without the outboard test a lattice narrower than the team would pass on its own
+     * terms: a dialog whose middle card is legible and whose outer four are not closes as a team of
+     * one, reports nobody dead, and is wrong about four titans.
+     */
+    confirmAgainstPortraits(size, row) {
+      const centres = latticeCentres(size);
+      const alive = row.slots.filter((slot) => slot.signal === "alive").length;
+      const dead = row.slots.filter((slot) => slot.signal === "dead").length;
+      const reading = `${size} card(s) at y ${row.top.toFixed(3)}-${row.bottom.toFixed(3)}, ${alive} with a health bar, ${dead} marked DEAD [${row.slots.map(describe).join(" ")}]`;
+      const missing = centres.filter((centre) => !this.hasPortrait(centre, row.top));
+      if (missing.length > 0) {
+        return unreadable(
+          `${reading}; ${missing.length} of them had no card drawn above the mark`,
+          this.scannedFraction
+        );
+      }
+      for (const outboard of [centres[0] - SLOT_PITCH, centres[size - 1] + SLOT_PITCH]) {
+        if (outboard < 0 || outboard > 1) continue;
+        if (!this.hasPortrait(outboard, row.top)) continue;
+        return {
+          ...unreadable(
+            `${reading}; a further card is drawn at ${outboard.toFixed(3)} that no mark accounted for`,
+            this.scannedFraction
+          ),
+          outboardCard: true
+        };
+      }
+      return {
+        verdict: verdictFor(size, alive, dead),
+        dead,
+        alive,
+        fielded: size,
+        scannedFraction: this.scannedFraction,
+        diagnostics: reading
+      };
+    }
+    /** Reads both signals for one lattice position, on every row of the dialog body. */
+    probeColumn(centre) {
+      const cached = this.probes.get(centre);
+      if (cached) return cached;
+      const bar = this.scanWindow(centre + BAR_LEFT_OFFSET, BAR_PROBE_HALF_WIDTH, isBarGreen);
+      const word = this.scanWindow(centre, WORD_PROBE_HALF_WIDTH, isDeadRed);
+      const column = {
+        readings: bar.coverage.map((barCoverage, row) => {
+          const wordCoverage = word.coverage[row] ?? 0;
+          return { signal: signalFor(barCoverage, wordCoverage), barCoverage, wordCoverage };
+        }),
+        brightest: bar.brightest.map((value, row) => Math.max(value, word.brightest[row] ?? 0)),
+        darkest: bar.darkest.map((value, row) => Math.min(value, word.darkest[row] ?? 1))
+      };
+      this.probes.set(centre, column);
+      return column;
+    }
+    /**
+     * One narrow window, read once: what share of each row carries a colour, and how bright that row got.
+     *
+     * The two answers come out of the same crop because the second one is free. The colour reading uses
+     * the coverage; {@link cardBandFor} uses the brightness to find where the cards end, and it
+     * does so without taking a pixel of its own - which is the only reason the distance gate leaves
+     * {@link MAX_SCANNED_FRACTION} where it was.
+     */
+    scanWindow(centre, halfWidth, matches) {
+      const box = {
+        x: Math.max(0, centre - halfWidth),
+        y: this.body.y,
+        w: 2 * halfWidth,
+        h: this.body.h
+      };
+      const pixels = cropToRgb(this.frame, box);
+      this.scannedPixels += pixels.width * pixels.height;
+      const coverage = [];
+      const brightest = [];
+      const darkest = [];
+      for (let y = 0; y < pixels.height; y += 1) {
+        let hits = 0;
+        let high = 0;
+        let low = 1;
+        for (let x = 0; x < pixels.width; x += 1) {
+          const pixel = pixelAt(pixels, x, y);
+          if (matches(pixel)) hits += 1;
+          if (pixel.value > high) high = pixel.value;
+          if (pixel.value < low) low = pixel.value;
+        }
+        coverage.push(pixels.width === 0 ? 0 : hits / pixels.width);
+        brightest.push(high);
+        darkest.push(pixels.width === 0 ? 1 : low);
+      }
+      return { coverage, brightest, darkest };
+    }
+    /** Whether a titan's card is drawn above this lattice position, loaded artwork or not. */
+    hasPortrait(centre, rowTop) {
+      const spread = this.portraitSpreadAt(centre, rowTop);
+      return spread !== void 0 && spread >= PORTRAIT_MIN_RELATIVE_SPREAD;
+    }
+    /**
+     * How much brightness varies across the card box, as a share of the box's own brightest pixel.
+     *
+     * Undefined when the box would fall off the frame, which is the one case that is not a measurement
+     * at all and must not be reported as a low one. Named and returned rather than compared in place so
+     * the figure {@link PORTRAIT_MIN_RELATIVE_SPREAD} is set from can be printed off any frame.
+     */
+    portraitSpreadAt(centre, rowTop) {
+      const top = rowTop - PORTRAIT_PROBE_TOP_IN_PITCHES * this.pitchY;
+      const bottom = rowTop - PORTRAIT_PROBE_BOTTOM_IN_PITCHES * this.pitchY;
+      const box = {
+        x: centre - PORTRAIT_PROBE_HALF_WIDTH,
+        y: top,
+        w: 2 * PORTRAIT_PROBE_HALF_WIDTH,
+        h: bottom - top
+      };
+      if (box.x < 0 || box.x + box.w > 1 || box.y < 0 || box.y + box.h > 1) return void 0;
+      const pixels = cropToRgb(this.frame, box);
+      this.scannedPixels += pixels.width * pixels.height;
+      if (pixels.width === 0 || pixels.height === 0) return void 0;
+      let brightest = 0;
+      let darkest = 1;
+      for (let y = 0; y < pixels.height; y += 1) {
+        for (let x = 0; x < pixels.width; x += 1) {
+          const { value } = pixelAt(pixels, x, y);
+          if (value > brightest) brightest = value;
+          if (value < darkest) darkest = value;
+        }
+      }
+      if (brightest <= 0) return void 0;
+      return (brightest - darkest) / brightest;
+    }
+    toFrameY(row, rowCount) {
+      return this.body.y + (rowCount === 0 ? 0 : row / rowCount * this.body.h);
+    }
+  };
+  function verdictFor(fielded, alive, dead) {
+    if (fielded <= 0) return "unreadable";
+    if (alive + dead !== fielded) return "unreadable";
+    return dead === 0 ? "noneDead" : "someDead";
+  }
+  function teamWasWiped(casualties) {
+    return casualties.verdict === "someDead" && casualties.alive === 0;
+  }
+  function latticeCentres(size) {
+    return Array.from({ length: size }, (_, index) => 0.5 + (index - (size - 1) / 2) * SLOT_PITCH);
+  }
+  function isDecisive(signal) {
+    return signal === "alive" || signal === "dead";
+  }
+  function isCardWindow(column, from, rows) {
+    let brightest = 0;
+    let darkest = 1;
+    for (let row = from; row < from + rows; row += 1) {
+      brightest = Math.max(brightest, column.brightest[row] ?? 0);
+      darkest = Math.min(darkest, column.darkest[row] ?? 1);
+    }
+    return brightest > 0 && (brightest - darkest) / brightest >= PORTRAIT_MIN_RELATIVE_SPREAD;
+  }
+  function signalFor(barCoverage, wordCoverage) {
+    const hasBar = barCoverage >= SIGNAL_MIN_COVERAGE;
+    const hasWord = wordCoverage >= SIGNAL_MIN_COVERAGE;
+    if (hasBar && hasWord) return "contradictory";
+    if (hasBar) return "alive";
+    if (hasWord) return "dead";
+    return "silent";
+  }
+  function summarise(column, start, end, centre) {
+    let bar = 0;
+    let word = 0;
+    for (let row = start; row <= end; row += 1) {
+      bar = Math.max(bar, column[row]?.barCoverage ?? 0);
+      word = Math.max(word, column[row]?.wordCoverage ?? 0);
+    }
+    return { centre, barCoverage: bar, wordCoverage: word, signal: signalFor(bar, word) };
+  }
+  function describe(slot) {
+    return `${slot.centre.toFixed(3)}:${slot.signal}(bar=${slot.barCoverage.toFixed(2)} word=${slot.wordCoverage.toFixed(2)})`;
+  }
+  function isBarGreen({ hue, saturation }) {
+    return hue >= BAR_GREEN.hueMin && hue <= BAR_GREEN.hueMax && saturation >= BAR_GREEN.minSaturation;
+  }
+  function isDeadRed({ hue, saturation }) {
+    return (hue <= DEAD_RED.hueBelow || hue >= DEAD_RED.hueAbove) && saturation >= DEAD_RED.minSaturation;
+  }
+  function refused(verdict, reason, scannedFraction) {
+    return { verdict, dead: 0, alive: 0, fielded: 0, scannedFraction, diagnostics: reason };
+  }
+  function unreadable(reason, scannedFraction) {
+    return refused("unreadable", reason, scannedFraction);
+  }
+
   // src/screens/detect.ts
   var MIN_EMBLEM_CONFIDENCE = 0.55;
   var SHOP_BLUE = { hueMin: 195, hueMax: 225, minSaturation: 0.5, minValue: 0.5 };
@@ -689,20 +1109,62 @@
   var RESULT_BANNER = { x: 0.3, y: 0.06, w: 0.4, h: 0.28 };
   var VICTORY_GOLD = { hueMin: 35, hueMax: 65, minSaturation: 0.55, minValue: 0.65 };
   var VICTORY_GOLD_MIN = 0.05;
-  async function bannerGoldFraction(screenshot) {
-    const pixels = await cropToRgb(screenshot, RESULT_BANNER);
-    let gold = 0;
+  var FOREIGN_PAINT = { hueMin: 150, hueMax: 300, minSaturation: 0.35, minValue: 0.25 };
+  var OCCLUSION_BAND = { x: 0.3, y: 0.06, w: 0.4, h: 0.255 };
+  var BANNER_OCCLUDED_MIN = 0.03;
+  var FADED_DIALOG_GREEN = { hueMin: 75, hueMax: 155, minSaturation: 0.45, minValue: 0.15 };
+  var FADED_DIALOG_BLUE = { hueMin: 195, hueMax: 230, minSaturation: 0.45, minValue: 0.15 };
+  var FADED_DIALOG_MAX_VALUE = 0.45;
+  var FADED_VICTORY_GOLD = { hueMin: 35, hueMax: 65, minSaturation: 0.55, minValue: 0.2 };
+  function dialogBodyAbove(okButton) {
+    const top = RESULT_BANNER.y + RESULT_BANNER.h;
+    return { x: 0, y: top, w: 1, h: okButton.bounds.y - top };
+  }
+  function attackButtonsAmong(actionButtons) {
+    return actionButtons.filter((blob) => blob.center.y > 0.7 && blob.center.x < 0.9);
+  }
+  function readOutcome(bannerSaysWon, bannerOccluded, casualties) {
+    const banner = bannerSaysWon ? "won" : "lost";
+    const occlusion = bannerOccluded ? " bannerOccluded" : "";
+    const teamHasAnOpinion = casualties.verdict === "noneDead" || casualties.verdict === "someDead";
+    if (teamHasAnOpinion) {
+      const wiped = teamWasWiped(casualties);
+      return {
+        won: !wiped,
+        diagnostics: `outcome=${wiped ? "lost" : "won"} banner=${banner} team=${wiped ? "wiped" : "survivors"} decidedBy=team${occlusion}`
+      };
+    }
+    if (bannerOccluded) {
+      return {
+        won: void 0,
+        diagnostics: `outcome=unknown banner=${banner} team=silent decidedBy=nothing${occlusion}`
+      };
+    }
+    return {
+      won: bannerSaysWon,
+      diagnostics: `outcome=${banner} banner=${banner} team=silent decidedBy=banner`
+    };
+  }
+  async function bandFraction(screenshot, band, range) {
+    const pixels = await cropToRgb(screenshot, band);
+    let matched = 0;
     let total = 0;
     for (let y = 0; y < pixels.height; y += 1) {
       for (let x = 0; x < pixels.width; x += 1) {
         const { hue, saturation, value } = pixelAt(pixels, x, y);
-        if (hue >= VICTORY_GOLD.hueMin && hue <= VICTORY_GOLD.hueMax && saturation >= VICTORY_GOLD.minSaturation && value >= VICTORY_GOLD.minValue) {
-          gold += 1;
+        if (hue >= range.hueMin && hue <= range.hueMax && saturation >= range.minSaturation && value >= range.minValue) {
+          matched += 1;
         }
         total += 1;
       }
     }
-    return total === 0 ? 0 : gold / total;
+    return total === 0 ? 0 : matched / total;
+  }
+  async function bannerGoldFraction(screenshot, gold) {
+    return bandFraction(screenshot, RESULT_BANNER, gold);
+  }
+  async function bannerForeignFraction(screenshot) {
+    return bandFraction(screenshot, OCCLUSION_BAND, FOREIGN_PAINT);
   }
   var ScreenDetector = class {
     constructor(config) {
@@ -744,20 +1206,29 @@
         }
         return { state: "unknown", diagnostics: `${diagnostics} noGate noOrb`, actionButtons };
       }
-      const attackButtons = actionButtons.filter((blob) => blob.center.y > 0.7 && blob.center.x < 0.9);
+      const attackButtons = attackButtonsAmong(actionButtons);
       const dialogBlues = await findColorBlobs(screenshot, DIALOG_BLUE, {
         minPixels: 60,
         searchArea: LOWER_BAND
       });
-      if (attackButtons.length === 1 && dialogBlues.length >= 1) {
-        const ok = attackButtons[0];
-        const gold = await bannerGoldFraction(screenshot);
+      const resultDialog = await findResultDialog(screenshot, attackButtons, dialogBlues);
+      if (resultDialog) {
+        const { ok, blues, faded } = resultDialog;
+        const gold = await bannerGoldFraction(
+          screenshot,
+          faded ? FADED_VICTORY_GOLD : VICTORY_GOLD
+        );
+        const foreign = await bannerForeignFraction(screenshot);
+        const occluded = foreign >= BANNER_OCCLUDED_MIN;
+        const casualties = readBattleCasualties(screenshot, dialogBodyAbove(ok));
+        const outcome = readOutcome(gold >= VICTORY_GOLD_MIN, occluded, casualties);
         return {
           state: "battleResult",
-          diagnostics: `${diagnostics} dialogBlue=${dialogBlues.length} bannerGold=${gold.toFixed(3)}`,
+          diagnostics: `${diagnostics} dialogBlue=${blues}${faded ? " faded" : ""} bannerGold=${gold.toFixed(3)} bannerForeign=${foreign.toFixed(3)} ${outcome.diagnostics} casualties=${casualties.verdict} (${casualties.diagnostics}) scanned=${casualties.scannedFraction.toFixed(3)}`,
           actionPoint: ok.center,
           actionButtons,
-          battleWon: gold >= VICTORY_GOLD_MIN
+          ...outcome.won === void 0 ? {} : { battleWon: outcome.won },
+          battleCasualties: casualties
         };
       }
       const dimmed = await findDimmedTeamButtons(screenshot);
@@ -798,6 +1269,38 @@
       return { state: "unknown", diagnostics, actionButtons };
     }
   };
+  async function findResultDialog(screenshot, liveGreens, liveBlues) {
+    if (liveGreens.length === 1 && liveBlues.length >= 1) {
+      return { ok: liveGreens[0], blues: liveBlues.length, faded: false };
+    }
+    const fadedGreens = await findFadedDialogButtons(screenshot, FADED_DIALOG_GREEN);
+    if (fadedGreens.length !== 1) return void 0;
+    const fadedBlues = await findFadedDialogButtons(screenshot, FADED_DIALOG_BLUE);
+    if (fadedBlues.length < 1) return void 0;
+    return { ok: fadedGreens[0], blues: fadedBlues.length, faded: true };
+  }
+  async function findFadedDialogButtons(screenshot, range) {
+    const blobs = await findColorBlobs(screenshot, range, {
+      minPixels: 170,
+      searchArea: LOWER_BAND,
+      minFillRatio: 0.7,
+      minAspect: 1.6,
+      maxAspect: 8
+    });
+    const faded = [];
+    for (const blob of blobs) {
+      const pixels = await cropToRgb(screenshot, blob.bounds);
+      let brightest = 0;
+      for (let y = 0; y < pixels.height; y += 1) {
+        for (let x = 0; x < pixels.width; x += 1) {
+          const { value } = pixelAt(pixels, x, y);
+          if (value > brightest) brightest = value;
+        }
+      }
+      if (brightest <= FADED_DIALOG_MAX_VALUE) faded.push(blob);
+    }
+    return faded;
+  }
   async function findDimmedTeamButtons(screenshot) {
     const blobs = await findColorBlobs(screenshot, DIMMED_ACTION, {
       minPixels: 170,
@@ -1404,6 +1907,52 @@
   };
   var DRIFT_WORTH_MENTIONING = 4e-3;
 
+  // src/flow/RunEnded.ts
+  var RUN_ENDING_VOCABULARY = {
+    aborted: {
+      headline: "RUN ABORTED.",
+      summary: "The run met something it could not read or could not act on, and stopped rather than guessing. The frame it stopped on is the evidence.",
+      frameLabel: "abort"
+    },
+    declined: {
+      headline: "RUN DECLINED.",
+      summary: "A rule this run was given stopped it on purpose. Nothing is broken and nothing was pressed; the frame below is what the rule read.",
+      frameLabel: "declined"
+    }
+  };
+  function vocabularyFor(ending) {
+    return RUN_ENDING_VOCABULARY[ending];
+  }
+  var RunEndedError = class extends Error {
+    constructor(ending, message, framePath) {
+      super(message);
+      this.ending = ending;
+      this.framePath = framePath;
+      this.name = "RunEndedError";
+    }
+    get headline() {
+      return vocabularyFor(this.ending).headline;
+    }
+    get summary() {
+      return vocabularyFor(this.ending).summary;
+    }
+    /**
+     * The whole thing a host should print, composed once here rather than at each host.
+     *
+     * There are three hosts and they used to phrase this themselves — the Node console said "Run
+     * stopped on purpose rather than guessing", the panel said "Stopped on purpose", the phone said
+     * "RUN ABORTED." — so the same event reached three people in three shapes. Composing it here is
+     * what makes the word the same wherever it is read.
+     */
+    get announcement() {
+      return `${this.headline} ${this.summary}
+${this.message}`;
+    }
+  };
+  function frameLabelFor(ending) {
+    return vocabularyFor(ending).frameLabel;
+  }
+
   // src/vision/health.ts
   var HEALTH_GREEN_HUE_MIN = 70;
   var HEALTH_GREEN_HUE_MAX = 165;
@@ -1494,6 +2043,9 @@
   var UNDERSTRENGTH_CONFIRMATIONS = 3;
   var UNDERSTRENGTH_SETTLE_MS = 700;
   var DEAD_HEALTH_THRESHOLD = 0.02;
+  var CASUALTY_READ_ATTEMPTS = 3;
+  var CASUALTY_SETTLE_MS = 700;
+  var MAX_CASUALTY_SETTLE_FRAMES = 3;
   var MAX_STUCK_ROUNDS = 3;
   function describeEmptySlots(empty, checked) {
     const names = empty.map((slot) => `slot ${slot}`);
@@ -1504,13 +2056,13 @@
     if (fielded === void 0) return "the roster strip could not be read";
     return `${fielded} of ${required} titans ticked in the roster`;
   }
-  var RunAbortedError = class extends Error {
-    constructor(message, screenshotPath) {
-      super(message);
-      this.screenshotPath = screenshotPath;
-      this.name = "RunAbortedError";
-    }
-  };
+  function describeCasualties(detection) {
+    const { battleCasualties, state } = detection;
+    return battleCasualties ? battleCasualties.diagnostics : `the last look found ${state}, which carries no casualty reading`;
+  }
+  function assertEveryVerdictHandled(verdict) {
+    throw new Error(`unhandled casualty verdict ${JSON.stringify(verdict)}`);
+  }
   var DungeonRunner = class {
     constructor(session, config, log, portraits, shouldStop = () => false) {
       this.session = session;
@@ -1533,6 +2085,8 @@
     lastChosenElement;
     lastScreenshot;
     templates;
+    /** Frames kept for {@link MAX_CASUALTY_SETTLE_FRAMES}, counted for this run only. */
+    casualtySettleFramesKept = 0;
     /** Kept on the instance so an abort can report how far the run got. */
     summary = {
       battlesStarted: 0,
@@ -1616,7 +2170,7 @@
             "Screen stayed unrecognised across every retry. Either the game showed a popup the runner does not know about, or the window size changed and the search regions no longer line up."
           );
         }
-        const { state, diagnostics, actionPoint, battleWon } = detection;
+        const { state, diagnostics, actionPoint } = detection;
         if (state !== "battleResult") resultAlreadyCounted = false;
         if (summary.battlesStarted >= this.config.limits.maxBattles && (state === "dungeonMap" || state === "battleChoice")) {
           return summary;
@@ -1655,19 +2209,27 @@
               const saved = await this.session.saveScreenshot("result", this.lastScreenshot);
               if (saved) this.log(`  battle result frame saved to ${saved}`);
             }
-            const ok = this.requireActionPoint(actionPoint, "the victory OK button", diagnostics);
+            const result = await this.stopIfATitanDied(detection);
+            const ok = this.requireActionPoint(
+              result.actionPoint,
+              "the victory OK button",
+              result.diagnostics
+            );
             await this.click(ok);
             if (resultAlreadyCounted) {
               this.log("  the same result screen again; dismissing it without counting it twice.");
             } else {
               resultAlreadyCounted = true;
               summary.battlesCompleted += 1;
-              if (battleWon === true) summary.battlesWon += 1;
-              else if (battleWon === false) summary.battlesLost += 1;
-              const outcome = battleWon === void 0 ? "resolved, outcome unreadable" : battleWon ? "WON" : "LOST";
+              if (result.battleWon === true) summary.battlesWon += 1;
+              else if (result.battleWon === false) summary.battlesLost += 1;
+              const outcome = result.battleWon === void 0 ? "resolved, outcome unreadable" : result.battleWon ? "WON" : "LOST";
               this.log(
                 `Battle ${outcome}. ${summary.battlesCompleted} of ${this.config.limits.maxBattles} resolved (${summary.battlesWon} won, ${summary.battlesLost} lost).`
               );
+              if (result.battleWon === void 0) {
+                this.log(`  neither signal could be trusted: ${result.diagnostics}`);
+              }
             }
             break;
           }
@@ -1777,7 +2339,7 @@
         );
         return;
       }
-      throw await this.abort(
+      throw await this.decline(
         `The team is short of ${requiredTitans}: ${describeEmptySlots(empty, centers.length)}, and ${describeTickCount(fielded, requiredTitans)}, after ${UNDERSTRENGTH_CONFIRMATIONS} readings ${UNDERSTRENGTH_SETTLE_MS}ms apart. Fielding an understrength team loses the battle and the titans with it, so nothing was clicked. Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.`
       );
     }
@@ -1972,6 +2534,124 @@
         throw await this.abort("Battle never reached a recognised end screen.");
       }
     }
+    /**
+     * Hands the game back, untouched, when the result dialog says a titan died.
+     *
+     * A death costs the day rather than the battle. A dead titan cannot be fielded again until it is
+     * revived, so every fight after one is entered a titan short - which is the very cost
+     * {@link refuseUnderstrengthTeam} exists to refuse, arriving by a different road. The difference
+     * is that an understrength team can be seen on team select and refused before anything is spent,
+     * while a death happens inside a battle this runner only ever sees the result of.
+     *
+     * What to do about it is not a decision this bot has any business making: reviving costs
+     * resources, a rearranged team may well be worth fighting on with, and some days the right answer
+     * is to keep the remaining attempts for tomorrow. So the run stops with nothing on the dialog
+     * pressed - not OK, and not the Retry beside it - and the player arrives to the game exactly as
+     * the battle left it.
+     *
+     * Off unless asked for, and when it is off this returns the detection it was given without taking
+     * so much as another screenshot: a run that never wanted this behaves exactly as it did before,
+     * whatever the casualty row happens to say.
+     *
+     * The four verdicts are branched over exhaustively rather than with an `else`, so a fifth answer
+     * from the reading cannot arrive here and be quietly treated as "look again". `Casualties.kt`'s
+     * enum gets that from the compiler; this side gets it from {@link assertEveryVerdictHandled}.
+     *
+     * **Only one of the two refusals is settled.** An unreadable row is transient - a dialog
+     * photographed while it is still animating into place has its status row somewhere the reading
+     * does not look, which is measured on a fifth of all battles - so it is looked at again up to
+     * {@link CASUALTY_READ_ATTEMPTS} times.
+     * A frame shape outside the one the lattice was measured on is not transient at all; it belongs to
+     * the screen, so settling would spend {@link CASUALTY_SETTLE_MS} twice per battle to reach the same
+     * answer and then stop with a message saying the row "could not be read", which is true and sends
+     * whoever reads it looking for a rendering fault that does not exist. That one stops on the first
+     * dialog, and says what it actually found.
+     *
+     * @returns the reading the caller should act on, which is a later one than it passed in whenever
+     *   the first was unreadable and a re-read settled it.
+     */
+    async stopIfATitanDied(detection) {
+      if (this.config.safety.stopWhenTitanDies !== true) return detection;
+      let current = detection;
+      for (let attempt = 1; attempt <= CASUALTY_READ_ATTEMPTS; attempt += 1) {
+        const casualties = current.battleCasualties;
+        if (casualties) {
+          switch (casualties.verdict) {
+            case "noneDead":
+              this.log(
+                `  all ${casualties.fielded} titans that fought came out alive; collecting the result.`
+              );
+              return current;
+            // The one branch here that is a decision rather than a difficulty. The row was read, both
+            // signals agreed, the rule fired as designed and the dialog was left alone - so it is
+            // declined, not aborted. The first time this fired on a live account it announced itself
+            // as `RUN ABORTED.` with an `abort_` frame beside it, and the owner read a working feature
+            // as a crash.
+            case "someDead":
+              throw await this.decline(
+                `A titan died in that battle: of the ${casualties.fielded} that fought, ${casualties.dead} came out dead and ${casualties.alive} alive (${casualties.diagnostics}). Nothing on the dialog was clicked - not OK, and not the Retry beside it - so the game is exactly as the battle left it and whether to revive, retry or stop for the day is yours to decide. A dead titan cannot be fielded again until it is revived, so carrying on would enter every remaining battle a titan short. Turn safety.stopWhenTitanDies off - in the page it is the "Stop running when a titan dies" switch - if you would rather it collected the result and fought on.`
+              );
+            // No settle, and no second look. Waiting is right for a dialog still animating into place
+            // and wrong here: this frame's shape belongs to the window, not to the moment, so three
+            // readings 700ms apart - two waits, 1.4 seconds - would be spent on every battle to
+            // rediscover the same fact and then stop saying the row "could not be read", which is true
+            // and sends whoever reads it hunting for a rendering fault that is not there. The figure
+            // used to be written here as 2.1 seconds, which counted a wait after the last reading that
+            // the loop does not take.
+            //
+            // Aborted and not declined, which is the closest call of the four. Nothing is wrong with
+            // the *game* here, but the reading cannot be done at all on this screen and the message
+            // asks for the one capture that would fix that - a fault in the reading layer, with a
+            // named owner and a next step, which is exactly what an abort is for.
+            case "unsupportedFrameShape":
+              throw await this.abort(
+                `This screen is a shape the casualty reading has never been measured on, so the result was refused rather than guessed at: ${casualties.diagnostics}. The team lattice is a fraction of the frame's width, which is right only while the game's picture fills that width; past an aspect of ${MAX_FRAME_ASPECT} a pillarboxed picture puts every card somewhere else, and the reading has answered "nobody died" about a battle that killed a titan on exactly such a frame. Looking again cannot help - a shape belongs to the screen and not to the moment, so every dialog this run meets will be the same - which is why nothing was clicked, nothing was waited out, and the dialog is still on screen. What would fix it is a result-dialog capture from a screen this shape: the gate is there because no such frame exists in either corpus, not because the dialog is unreadable in principle, so send one in and the reading can be measured on it. Until then, either give the game a screen nearer 2:1 - this run is reading ${this.session.describe()} - or turn safety.stopWhenTitanDies off to have results collected unread.`
+              );
+            // The one verdict a second look can genuinely change, which is why it is the only one that
+            // falls through to the settle below.
+            case "unreadable":
+              break;
+            default:
+              assertEveryVerdictHandled(casualties.verdict);
+          }
+        }
+        if (attempt === CASUALTY_READ_ATTEMPTS) break;
+        const kept = await this.keepCasualtySettleFrame();
+        this.log(
+          `  cannot yet tell whether a titan died (${describeCasualties(current)}); the dialog is probably still animating in, so waiting ${CASUALTY_SETTLE_MS}ms and looking again (${attempt} of ${CASUALTY_READ_ATTEMPTS - 1}).${kept}`
+        );
+        await this.session.wait(CASUALTY_SETTLE_MS);
+        current = await this.look();
+      }
+      throw await this.abort(
+        `Could not tell whether a titan died: ${CASUALTY_READ_ATTEMPTS} readings ${CASUALTY_SETTLE_MS}ms apart all came back unreadable (${describeCasualties(current)}). Clicking OK would dismiss a result nobody has read, which is the one thing safety.stopWhenTitanDies is on to prevent, so nothing was clicked and the dialog is still on screen. The frame that was read is saved beside this message: if it shows a team the status row is plainly legible under, the reading is at fault and the frame belongs in the fixtures. Turn safety.stopWhenTitanDies off to have the run collect the result and carry on regardless.`
+      );
+    }
+    /**
+     * Keeps the frame that fired a casualty settle, up to {@link MAX_CASUALTY_SETTLE_FRAMES} per run.
+     *
+     * Under a label of its own, deliberately. `safety.captureBattleResults` already writes the first
+     * frame of every result dialog, but it writes all of them as `result`, so the one transient in a
+     * run of twenty-five is not findable among the other twenty-four; and it is an option, so on a run
+     * with it off nothing keeps the transient at all. These frames answer a different question from
+     * that feature's - what the reading saw when it could not decide, or decided wrongly - and a
+     * question deserves its own filename.
+     *
+     * Returns a sentence for the caller's log line rather than logging itself, so the wait and the
+     * frame it kept read as one event. Empty when the cap is spent or the host has no filesystem: the
+     * in-page host saves nothing, and a settle there should still say it waited.
+     */
+    async keepCasualtySettleFrame() {
+      if (this.casualtySettleFramesKept >= MAX_CASUALTY_SETTLE_FRAMES) return "";
+      const frame = this.lastScreenshot;
+      if (!frame) return "";
+      this.casualtySettleFramesKept += 1;
+      const path = await this.session.saveScreenshot(
+        `casualty_settle${this.casualtySettleFramesKept}`,
+        frame
+      );
+      return path === void 0 ? "" : ` Kept the frame it read at ${path}.`;
+    }
     // ------------------------------------------------------------------ reading
     /**
      * Finds both tanks by portrait and reads their health.
@@ -2076,22 +2756,59 @@
     }
     requireActionPoint(point, what, diagnostics) {
       if (!point) {
-        throw new RunAbortedError(`Could not locate ${what} on screen (${diagnostics}).`);
+        throw new RunEndedError("aborted", `Could not locate ${what} on screen (${diagnostics}).`);
       }
       return point;
     }
+    /**
+     * Ends the run because something is wrong: a screen that could not be read, or an act that had no
+     * effect.
+     *
+     * Every one of these has a fault behind it that somebody could fix, which is what the frame is
+     * kept for. {@link decline} is the other ending and the two are not degrees of the same thing —
+     * see {@link RunEnding}.
+     */
     async abort(message) {
+      return this.endRun("aborted", message);
+    }
+    /**
+     * Ends the run because a rule said not to act, with nothing wrong and nothing pressed.
+     *
+     * Two rules reach here, and they are the same rule arriving from opposite sides of a battle:
+     * {@link refuseUnderstrengthTeam} sees the cost coming and refuses before anything is spent,
+     * while the death branch of {@link stopIfATitanDied} sees it after the fact and hands the game
+     * back untouched. In both the reading worked; what the run declined to do was press the button.
+     *
+     * The frame is kept for the same reason an abort's is — §3.2 wants the exact frame that was
+     * looked at — but it answers a different question, so it is filed under a different label.
+     */
+    async decline(message) {
+      return this.endRun("declined", message);
+    }
+    /**
+     * Composes a run-ending error, keeping the exact frame that was last looked at.
+     *
+     * §3.2: never a fresh capture. The map animates while it scrolls and a result dialog animates
+     * while it arrives, so a re-capture here would file a different moment than the one the message
+     * describes, and the evidence would contradict the reading it was meant to explain.
+     *
+     * `safety.saveScreenshotOnAbort` gates both endings despite its name. Renaming a config key is a
+     * change to `config/chrome.json`, `config/android.json` and the Android parser at once, which is
+     * a wider change than the vocabulary this belongs to; what it means is "keep the frame when a run
+     * ends early", and it always did.
+     */
+    async endRun(ending, message) {
       const progress = `Stopped after ${this.summary.battlesCompleted} of ${this.config.limits.maxBattles} battles resolved (${this.summary.battlesWon} won, ${this.summary.battlesLost} lost, ${this.summary.battlesStarted} started).`;
       if (!this.config.safety.saveScreenshotOnAbort) {
-        return new RunAbortedError(`${message}
+        return new RunEndedError(ending, `${message}
 ${progress}`);
       }
-      const path = await this.session.saveScreenshot("abort", this.lastScreenshot);
-      if (!path) return new RunAbortedError(`${message}
+      const path = await this.session.saveScreenshot(frameLabelFor(ending), this.lastScreenshot);
+      if (!path) return new RunEndedError(ending, `${message}
 ${progress}`);
-      return new RunAbortedError(`${message}
+      return new RunEndedError(ending, `${message}
 ${progress}
-Screenshot saved to ${path}`, path);
+Frame saved to ${path}`, path);
     }
   };
   function rosterCardCenterX(index, geometry) {
@@ -2835,7 +3552,7 @@ Screenshot saved to ${path}`, path);
   function buildDiagnosticsBundle(input) {
     const text = (value) => new TextEncoder().encode(value);
     const entries = [
-      { name: "about.txt", bytes: text(describe(input)) },
+      { name: "about.txt", bytes: text(describe2(input)) },
       { name: "log.txt", bytes: text(`${input.logLines.join("\n")}
 `) },
       { name: "settings.json", bytes: text(`${JSON.stringify(input.settings, null, 2)}
@@ -2851,7 +3568,7 @@ Screenshot saved to ${path}`, path);
     });
     return buildZip(entries);
   }
-  function describe(input) {
+  function describe2(input) {
     const lines = [
       `HWA dungeon userscript ${input.version}`,
       `exported            ${(/* @__PURE__ */ new Date()).toISOString()}`,
@@ -2988,6 +3705,7 @@ Screenshot saved to ${path}`, path);
   var STORAGE_KEY3 = "hwa-dungeon.elementPriority";
   var HEALING_KEY = "hwa-dungeon.healingSwap";
   var FULL_TEAM_KEY = "hwa-dungeon.requireFullTeam";
+  var STOP_ON_DEATH_KEY = "hwa-dungeon.stopWhenTitanDies";
   function loadRanking(fallback) {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY3);
@@ -3014,6 +3732,12 @@ Screenshot saved to ${path}`, path);
   }
   function saveRequireFullTeam(required) {
     writeFlag(FULL_TEAM_KEY, required);
+  }
+  function loadStopWhenTitanDies() {
+    return readFlag(STOP_ON_DEATH_KEY, false);
+  }
+  function saveStopWhenTitanDies(stop) {
+    writeFlag(STOP_ON_DEATH_KEY, stop);
   }
   function readFlag(key, fallback) {
     try {
@@ -3053,7 +3777,7 @@ Screenshot saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.10.0" : "dev";
+  var SCRIPT_VERSION = true ? "0.11.0" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
@@ -3067,6 +3791,7 @@ Screenshot saved to ${path}`, path);
     let healingSwap = loadHealingSwapEnabled();
     let healingTitans = loadCalibratedTitans();
     let requireFullTeam = loadRequireFullTeam();
+    let stopWhenTitanDies = loadStopWhenTitanDies();
     const journal = openRunLog(SCRIPT_VERSION);
     const panel = createPanel({
       start: () => {
@@ -3143,10 +3868,16 @@ Screenshot saved to ${path}`, path);
           version: SCRIPT_VERSION,
           logLines,
           titans: healingTitans,
+          // Every switch a run obeys, because the bundle is labelled "Settings as stored:" and a
+          // list that leaves one out is not that. This one earns its place twice over: the run it
+          // most often has to explain is one that halted with the dialog still on screen and nothing
+          // clicked, and whether that was the rule working or the runner stuck is unanswerable
+          // without knowing the rule was on.
           settings: {
             roomPriority: ranking,
             healingSwap,
             requireFullTeam,
+            stopWhenTitanDies,
             healingTitans: healingTitans.map((titan) => titan.name)
           },
           frame,
@@ -3171,6 +3902,15 @@ Screenshot saved to ${path}`, path);
           onChange: (checked) => {
             requireFullTeam = checked;
             saveRequireFullTeam(checked);
+          }
+        },
+        {
+          label: "Stop running when a titan dies",
+          title: "On ends the run on the result dialog without touching it - neither OK nor Retry - so you can revive before anything else is spent, at the cost of the attempts left unused until you come back. Off clicks OK and fights on a titan short.",
+          checked: stopWhenTitanDies,
+          onChange: (checked) => {
+            stopWhenTitanDies = checked;
+            saveStopWhenTitanDies(checked);
           }
         }
       ]
@@ -3212,7 +3952,7 @@ Screenshot saved to ${path}`, path);
         log(`Room priority: ${ranking.join(" > ")}.`);
         const electing = candidatesOf(healingTitans);
         log(
-          `Healing swap ${healingSwap && electing.length > 0 ? `on for ${electing.join(", ")}` : "off"}; ${requireFullTeam ? "a full team is required" : "incomplete teams are allowed"}.`
+          `Healing swap ${healingSwap && electing.length > 0 ? `on for ${electing.join(", ")}` : "off"}; ${requireFullTeam ? "a full team is required" : "incomplete teams are allowed"}; ${stopWhenTitanDies ? "a titan dying stops the run" : "the run continues after a titan dies"}.`
         );
         if (healingSwap && electing.length === 0) {
           log(
@@ -3240,7 +3980,8 @@ Screenshot saved to ${path}`, path);
                 candidates: healingSwap ? candidatesOf(healingTitans) : []
               },
               team: { ...base.strategy.team, allowIncompleteTeam: !requireFullTeam }
-            }
+            },
+            safety: { ...base.safety, stopWhenTitanDies }
           },
           log,
           new PrecomputedPortraits(signaturesOf(healingTitans)),
@@ -3251,8 +3992,8 @@ Screenshot saved to ${path}`, path);
           `Finished: ${summary.battlesCompleted} battles resolved (${summary.battlesWon} won, ${summary.battlesLost} lost). Stopped because ${summary.stoppedBecause}.`
         );
       } catch (error) {
-        if (error instanceof RunAbortedError) {
-          log(`Stopped on purpose rather than guessing: ${error.message}`);
+        if (error instanceof RunEndedError) {
+          log(error.announcement);
         } else {
           log(`Unexpected failure: ${error instanceof Error ? error.message : String(error)}`);
           throw error;
