@@ -1,8 +1,8 @@
 {
-  "version": "v0.5",
+  "version": "v0.6",
   "apk": "/downloads/hwa-automation.apk",
-  "sha256": "77e90e4c32c1a566f98d3d234de2b0414f04ad6f860a1f2fd46ecdb28a27d053",
-  "bytes": 1259047,
-  "released": "2026-09-06T23:51:28Z",
-  "sourceCommit": "8bef43b73379956c9421505e08e5b1873010d44b"
+  "sha256": "89d0cbf517a319291524c08cca5ce316d97b852737f2ac5bd8878e6f92775e86",
+  "bytes": 1274439,
+  "released": "2026-09-08T19:16:10Z",
+  "sourceCommit": "12c659977fb81bb5da6f4a090bd7cd90be350b0d"
 }

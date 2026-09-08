@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.11.0
+// @version      0.12.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -88,7 +88,7 @@
             { x: 0.183, y: 0.459 },
             { x: 0.329, y: 0.458 }
           ],
-          "//marker": "Measured on real markers across both empty frames: 93-119 pixels, aspect 1.06-1.31, fill 0.33-0.47. The bounds sit outside that spread with room to spare, while still excluding the nearest artwork blob on the full-team frame (83px, aspect 1.07, fill 0.40) - which position alone would also have rejected, since it sits 0.12 from the closest slot.",
+          "//marker": "Re-measured after decodePng stopped applying embedded ICC profiles, over the nine real chevrons in this corpus - four on emptyteam-mixed-01.png, four on emptyteam-waterdead-01.png, and the one at slot 0 of 2026-08-09T19-20-48-352Z_abort.png: 104-124 pixels, aspect 1.214-1.385, fill 0.449-0.521. What has to be excluded is the gold-armoured titan who stands at slot 2 on four team-select frames, 0.016-0.018 from the slot centre and so NOT excluded by position: 71-81 pixels, aspect 0.500-0.550, fill 0.327-0.405. Three of the four bounds turn him away independently (pixels, aspect, and the gold band below), and the fill floor is not one of them - his fill sits above it, not below. maxFillRatio is the tightest bound in this block, 0.029 above the widest real marker, and the ICC fix is what narrowed it: with the profile applied those same nine markers filled 0.339-0.493. Nothing measured asks it to move, and widening it without a blob to exclude would be a guess.",
           marker: {
             minPixels: 88,
             maxPixels: 135,
@@ -99,7 +99,7 @@
             positionTolerance: 0.03,
             "//coverageBox": "The box the gold-coverage test is taken over, centred on the slot.",
             coverageBox: { w: 0.034, h: 0.062 },
-            "//goldCoverage": "A BAND, and the band is the point. A marker is a fixed glyph on empty floor and always covers about the same share of its box: 0.165 to 0.200 measured over eight slots across two rooms that look nothing alike. An occupied slot misses the band from one side or the other - a titan standing on the marker hides it and scores 0.000 to 0.025, while one in gold armour scores 0.273 to 0.311, MORE gold than the marker itself. Treating more gold as more marker-like is what stopped a run on an earth floor, where the whole team is green and gold.",
+            "//goldCoverage": "A BAND, and the band is the point. A marker is a fixed glyph on empty floor and always covers about the same share of its box: 0.1840 to 0.2005 measured over nine slots across three rooms that look nothing alike. An occupied slot misses the band from one side or the other - a titan standing on the marker hides it and scores 0.000 to 0.028, while one in gold armour scores 0.2976 to 0.3024, MORE gold than the marker itself. Treating more gold as more marker-like is what stopped a run on an earth floor, where the whole team is green and gold. The ICC fix moved both edges inward: the armoured titan used to score 0.2987-0.3226, so the ceiling's margin above him fell from 0.0487 to 0.0476, and the markers used to score 0.1648-0.2005, so the floor's margin below them rose from 0.0548 to 0.0740.",
             minGoldCoverage: 0.11,
             maxGoldCoverage: 0.25
           }
@@ -111,7 +111,8 @@
           visibleCardCount: 12,
           portraitCenterY: 0.885,
           portraitBox: { w: 0.05, h: 0.09 },
-          healthBar: { y: 0.9668, halfWidth: 0.0256, thickness: 9e-3 },
+          "//healthBar": "halfWidth was 0.0256, which is 92px at 1800 and 15px wider than the bar it is a fraction of. Measured on the health row of the two browser team selects in the corpus: the bar's track runs 164..240 at 1800 and its one-pixel border either side leaves a fill area of 75px, 150px on the same layout at a 2x device pixel ratio - so 75/2/1800, the same 0.0208 at both. The old box reached 7px past the gold edging on the left and 9px on the right, none of which can ever be green, so a titan at FULL health read 80-82% and the healing rule's 0.80 sat two points below full. 0.9668 and 0.009 are unchanged and still agree with what the derivation measures.",
+          healthBar: { y: 0.9668, halfWidth: 0.02083, thickness: 9e-3 },
           "//portraitArt": "The crop a portrait fingerprint is taken from. Was a hard-coded constant in vision/roster.ts; these are exactly the values it held, now written down as belonging to this client rather than to the code.",
           portraitArt: { w: 0.04, h: 0.055, centerY: 0.882 },
           "//selectedTick": "Measured off a magnified card: a cream check at the lower right of the portrait. An earlier box centred at 0.885 ended at 0.9075 - entirely above the tick - so every card read as unselected, which made the runner click a titan who was already in the team and remove them.",
@@ -360,6 +361,11 @@
   var TICK_HUE_MIN = 25;
   var TICK_HUE_MAX = 65;
   var TICK_MIN_SATURATION = 0.12;
+  function isTickPixel(hsv) {
+    const brightEnough = hsv.value > TICK_MIN_VALUE && hsv.saturation < TICK_MAX_SATURATION;
+    const rightColour = hsv.hue >= TICK_HUE_MIN && hsv.hue <= TICK_HUE_MAX && hsv.saturation >= TICK_MIN_SATURATION;
+    return brightEnough && rightColour;
+  }
   var SELECTED_BADGE_THRESHOLD = 0.18;
   async function isCardFielded(frame, index, geometry) {
     if (await tickCoverage(frame, index, geometry) < SELECTED_BADGE_THRESHOLD) return false;
@@ -372,10 +378,7 @@
     let cream = 0;
     for (let y = 0; y < pixels.height; y += 1) {
       for (let x = 0; x < pixels.width; x += 1) {
-        const hsv = pixelAt(pixels, x, y);
-        const brightEnough = hsv.value > TICK_MIN_VALUE && hsv.saturation < TICK_MAX_SATURATION;
-        const rightColour = hsv.hue >= TICK_HUE_MIN && hsv.hue <= TICK_HUE_MAX && hsv.saturation >= TICK_MIN_SATURATION;
-        if (brightEnough && rightColour) cream += 1;
+        if (isTickPixel(pixelAt(pixels, x, y))) cream += 1;
       }
     }
     return cream / total;
@@ -1519,8 +1522,10 @@
   var HEALTH_HUE = { min: 70, max: 165 };
   var HEALTH_MIN_SATURATION = 0.3;
   var HEALTH_MIN_VALUE = 0.2;
-  var TICK_MIN_VALUE2 = 0.75;
-  var TICK_MAX_SATURATION2 = 0.35;
+  var TICK_MIN_PIXELS = 80;
+  var TICK_MIN_DENSITY = 0.19;
+  var TICK_MAX_ASPECT = 0.95;
+  var BAR_TROUGH_MAX_VALUE = 0.145;
   var MIN_BAR_WIDTH = 0.015;
   var STRIP_SEARCH_TOP = 0.6;
   var LATTICE_TOLERANCE = 4e-3;
@@ -1533,7 +1538,7 @@
   var TICK_SEARCH_SHARE_OF_TILE = 0.45;
   var ART_SHARE_OF_CARD_WIDTH = 0.66;
   var isHealth = (pixel) => pixel.hue >= HEALTH_HUE.min && pixel.hue <= HEALTH_HUE.max && pixel.saturation >= HEALTH_MIN_SATURATION && pixel.value >= HEALTH_MIN_VALUE;
-  async function deriveRosterGeometry(screenshot) {
+  async function deriveRosterGeometry(screenshot, onTickBlob) {
     const whole = cropRegion(screenshot, {
       left: 0,
       top: 0,
@@ -1561,12 +1566,16 @@
       Math.round((health.top + health.bottom) / 2),
       health.lattice.runs
     );
-    const frameWidth = barFrameWidth(pixels, health, background);
-    if (frameWidth === void 0) {
-      return refuse(notes, "could not measure the bar frame's width");
+    const frames = barFrames(pixels, health, background);
+    if (frames.length === 0) {
+      return refuse(notes, "could not measure the bar frames");
     }
-    notes.push(`frame ${frameWidth.toFixed(1)}px, background hue ${background.hue.toFixed(0)}`);
-    const anchorCentre = health.lattice.origin + frameWidth / 2;
+    const frameWidth = median(frames.map((frame) => frame.right - frame.left + 1));
+    const barFillWidth = median(frames.map((frame) => frame.fillWidth));
+    notes.push(
+      `frame ${frameWidth.toFixed(1)}px, bar fill ${barFillWidth.toFixed(1)}px, background hue ${background.hue.toFixed(0)}`
+    );
+    const anchorCentre = cardCentreFromBarFrames(frames, pitch);
     const barCentres = health.lattice.runs.map((run) => run.start + frameWidth / 2);
     const tile = findTileBand(
       pixels,
@@ -1593,14 +1602,21 @@
     notes.push(
       `${strip.count} cards, pitch ${pitch.toFixed(1)}px, first centre ${strip.firstCentre.toFixed(1)}px`
     );
+    if (strip.count === 0) {
+      return refuse(
+        notes,
+        `the tile band is ${tileHeight}px against a ${pitch.toFixed(0)}px pitch and holds no artwork to count cards by`,
+        ARTWORK_HAS_NOT_ARRIVED
+      );
+    }
     const tick = findTick(
       pixels,
       strip.firstCentre,
       pitch,
       strip.count,
-      frameWidth,
       Math.round(tile.bottom - tileHeight * TICK_SEARCH_SHARE_OF_TILE),
-      tile.bottom
+      tile.bottom,
+      onTickBlob
     );
     notes.push(
       tick ? `tick dx ${(tick.dx / pixels.width).toFixed(4)}, y ${(tick.centreY / pixels.height).toFixed(4)}` : "no in-team tick in this frame"
@@ -1618,7 +1634,7 @@
       portraitBox: { w: frameWidth / pixels.width, h: tileHeight / pixels.height },
       healthBar: {
         y: (health.top + health.bottom) / 2 / pixels.height,
-        halfWidth: frameWidth / 2 / pixels.width,
+        halfWidth: barFillWidth / 2 / pixels.width,
         thickness: (health.bottom - health.top + 1) / pixels.height
       },
       portraitArt: {
@@ -1658,11 +1674,11 @@
     if (!best || best.runs.length < MIN_BARS) return void 0;
     return { pitch, origin: Math.min(...best.runs.map((run) => run.start)), runs: best.runs };
   }
-  function refuse(notes, detail) {
+  var BARS_ARE_THE_ANCHOR = "The strip is anchored on the titans' health bars, and a dead titan draws none at all - so a roster with fewer than three living titans in it cannot be measured, and the configured geometry has to stand in.";
+  var ARTWORK_HAS_NOT_ARRIVED = "Cards are counted on their artwork, because a dead titan draws no bar to count instead - and until the portraits load the game fills every tile with a flat element colour, which has nothing to count. This is a screen still assembling, not a screen without a roster; a frame in this state is also the one that makes portrait matching quietly wrong, so it is refused rather than measured.";
+  function refuse(notes, detail, because = BARS_ARE_THE_ANCHOR) {
     const measured = notes.length === 0 ? "" : `${notes.join("; ")}; `;
-    return {
-      diagnostics: `${measured}${detail}. The strip is anchored on the titans' health bars, and a dead titan draws none at all - so a roster with fewer than three living titans in it cannot be measured, and the configured geometry has to stand in.`
-    };
+    return { diagnostics: `${measured}${detail}. ${because}` };
   }
   function findBarBand(pixels, matches, searchTop, searchBottom, tolerance, preferLowest = false) {
     const minWidth = Math.round(MIN_BAR_WIDTH * pixels.width);
@@ -1718,18 +1734,32 @@
   function isBackground(pixel, background) {
     return hueDistance(pixel.hue, background.hue) <= BACKGROUND_HUE_TOLERANCE && Math.abs(pixel.value - background.value) <= BACKGROUND_VALUE_TOLERANCE;
   }
-  function barFrameWidth(pixels, band, background) {
+  function barFrames(pixels, band, background) {
     const row = Math.round((band.top + band.bottom) / 2);
-    const widths = [];
+    const frames = [];
     for (const run of band.lattice.runs) {
       let start = run.start;
       let end = run.end;
       while (start - 1 >= 0 && !isBackground(hsvAt(pixels, start - 1, row), background)) start -= 1;
       while (end + 1 < pixels.width && !isBackground(hsvAt(pixels, end + 1, row), background)) end += 1;
-      const width = end - start + 1;
-      if (width < band.lattice.pitch) widths.push(width);
+      if (end - start + 1 >= band.lattice.pitch) continue;
+      let trackStart = run.start;
+      let trackEnd = run.end;
+      while (trackStart - 1 >= 0 && hsvAt(pixels, trackStart - 1, row).value <= BAR_TROUGH_MAX_VALUE) {
+        trackStart -= 1;
+      }
+      while (trackEnd + 1 < pixels.width && hsvAt(pixels, trackEnd + 1, row).value <= BAR_TROUGH_MAX_VALUE) {
+        trackEnd += 1;
+      }
+      const border = run.start - trackStart;
+      frames.push({ left: start, right: end, fillWidth: trackEnd - trackStart + 1 - 2 * border });
     }
-    return widths.length === 0 ? void 0 : median(widths);
+    return frames;
+  }
+  function cardCentreFromBarFrames(frames, pitch) {
+    const centres = frames.map((frame) => (frame.left + frame.right) / 2);
+    const leftmost = Math.min(...centres);
+    return median(centres.map((centre) => centre - pitch * Math.round((centre - leftmost) / pitch)));
   }
   function walkStrip(pixels, nearTop, nearBottom, anchorCentre, pitch, frameWidth) {
     const present = (centre) => {
@@ -1745,37 +1775,56 @@
     }
     return { firstCentre, count };
   }
-  function findTick(pixels, firstCentre, pitch, cardCount, frameWidth, searchTopRow, healthTop) {
+  function tickBlobForCard(pixels, centre, pitch, searchTopRow, healthTop) {
     const searchTop = Math.max(0, searchTopRow);
+    const left = Math.round(centre);
+    const right = Math.min(pixels.width - 1, Math.round(centre + pitch / 2));
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let count = 0;
+    for (let y = searchTop; y < healthTop; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        if (!isTickPixel(hsvAt(pixels, x, y))) continue;
+        count += 1;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+    if (maxX < minX || maxY < minY) return void 0;
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+    const density = count / (width * height);
+    return {
+      count,
+      minX,
+      maxX,
+      minY,
+      maxY,
+      width,
+      height,
+      density,
+      aspect: height / width,
+      isTick: count >= TICK_MIN_PIXELS && density >= TICK_MIN_DENSITY && height / width <= TICK_MAX_ASPECT
+    };
+  }
+  function findTick(pixels, firstCentre, pitch, cardCount, searchTopRow, healthTop, onBlob) {
     const found = [];
     for (let index = 0; index < cardCount; index += 1) {
       const centre = firstCentre + index * pitch;
-      const left = Math.round(centre);
-      const right = Math.min(pixels.width - 1, Math.round(centre + pitch / 2));
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      let count = 0;
-      for (let y = searchTop; y < healthTop; y += 1) {
-        for (let x = left; x <= right; x += 1) {
-          const pixel = hsvAt(pixels, x, y);
-          if (pixel.value <= TICK_MIN_VALUE2 || pixel.saturation >= TICK_MAX_SATURATION2) continue;
-          count += 1;
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-      const area = (maxX - minX + 1) * (maxY - minY + 1);
-      if (count < 80 || area <= 0 || count / area < 0.3) continue;
+      const blob = tickBlobForCard(pixels, centre, pitch, searchTopRow, healthTop);
+      if (!blob) continue;
+      onBlob?.(index, blob);
+      if (!blob.isTick) continue;
       found.push({
-        dx: (minX + maxX) / 2 - centre,
-        centreY: (minY + maxY) / 2,
-        width: maxX - minX + 1,
-        height: maxY - minY + 1,
-        top: minY
+        dx: (blob.minX + blob.maxX) / 2 - centre,
+        centreY: (blob.minY + blob.maxY) / 2,
+        width: blob.width,
+        height: blob.height,
+        top: blob.minY
       });
     }
     if (found.length === 0) return void 0;
@@ -1952,6 +2001,12 @@ ${this.message}`;
   function frameLabelFor(ending) {
     return vocabularyFor(ending).frameLabel;
   }
+  function unsettledResultFrameLabel(battleNumber, look) {
+    return `result_unsettled_battle${battleNumber}_look${look}`;
+  }
+  function unsettledTeamFrameLabel(battleNumber) {
+    return `teamstrength_battle${battleNumber}`;
+  }
 
   // src/vision/health.ts
   var HEALTH_GREEN_HUE_MIN = 70;
@@ -2040,22 +2095,136 @@ ${this.message}`;
   var MAX_CHAINED_SAVE_POINT_DIALOGS = 2;
   var GATE_SETTLE_TOLERANCE = 0.01;
   var EMPTY_SLOT_CONFIRMATIONS = 3;
-  var UNDERSTRENGTH_CONFIRMATIONS = 3;
+  var UNDERSTRENGTH_CONFIRMATIONS = 4;
   var UNDERSTRENGTH_SETTLE_MS = 700;
+  var MAX_UNSETTLED_TEAM_FRAMES = 4;
   var DEAD_HEALTH_THRESHOLD = 0.02;
   var CASUALTY_READ_ATTEMPTS = 3;
   var CASUALTY_SETTLE_MS = 700;
-  var MAX_CASUALTY_SETTLE_FRAMES = 3;
+  var MAX_UNSETTLED_RESULT_FRAMES = 3;
+  var NO_BATTLE_YET = -1;
   var MAX_STUCK_ROUNDS = 3;
   function describeEmptySlots(empty, checked) {
+    if (empty.length === 0) return `none of the ${checked} checked shows an empty marker`;
     const names = empty.map((slot) => `slot ${slot}`);
-    const named = names.length <= 1 ? names[0] ?? "no slot" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    const named = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
     return empty.length === 1 ? `${named} of the ${checked} checked still shows its empty marker` : `${named} of the ${checked} checked still show their empty markers`;
   }
   function describeTickCount(fielded, required) {
     if (fielded === void 0) return "the roster strip could not be read";
     return `${fielded} of ${required} titans ticked in the roster`;
   }
+  function namesCards(indexes) {
+    if (indexes.length === 0) return "no cards";
+    if (indexes.length === 1) return `card ${indexes[0]}`;
+    return `cards ${indexes.slice(0, -1).join(", ")} and ${indexes[indexes.length - 1]}`;
+  }
+  function shortTeamRemedy(strip, requiredTitans, stripShowsEveryone) {
+    const fillIt = "Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.";
+    if (!strip || strip.dead.length === 0) return fillIt;
+    const { cards, dead } = strip;
+    const living = cards - dead.length;
+    const died = `The strip says what happened: of the ${cards} cards it is showing, counting from the left, ${namesCards(dead)} ${dead.length === 1 ? "has" : "have"} no health bar left - which is how this game draws a titan that died. The game drops a dead titan from the team and puts nobody in its place.`;
+    let whatIsLeft;
+    if (living >= requiredTitans) {
+      whatIsLeft = `${living} of the ${cards} still have health, so a full team of ${requiredTitans} can still be put together by hand: add whichever of them the game left out, and run again.`;
+    } else if (stripShowsEveryone) {
+      whatIsLeft = `Only ${living} of the ${cards} still have health, and this floor draws every titan that could be fielded on it, so there is no full team of ${requiredTitans} to arrange for this room today. A dead titan cannot be fielded again until it is revived.`;
+    } else {
+      whatIsLeft = `Only ${living} of the ${cards} in view still have health, and this floor's strip scrolls, so whether ${requiredTitans} living titans remain cannot be read from here. Fill the team by hand before running again.`;
+    }
+    return `${died} ${whatIsLeft} Setting strategy.team.allowIncompleteTeam would fight every remaining room a titan short rather than fix that.`;
+  }
+  var STILL_ASSEMBLING_PHRASE = "still assembling";
+  function stripRefusalFrom(diagnostics) {
+    return diagnostics.includes(STILL_ASSEMBLING_PHRASE) ? "stillAssembling" : "tooFewLivingTitans";
+  }
+  function teamHealthLine(fielded, benched) {
+    const readings = fielded.map(
+      ({ index, health }) => health <= DEAD_HEALTH_THRESHOLD ? `card ${index} DEAD` : `card ${index} ${Math.round(health * 100)}%`
+    );
+    return `  team: ${readings.join(", ")}${describeBenchedCards(benched)}`;
+  }
+  function describeBenchedCards(benched) {
+    if (!benched.measured) {
+      const because = benched.why === "stillAssembling" ? "the screen is still being drawn" : "too few titans are still alive to draw the bars it is measured from";
+      return ` (the strip could not be measured on this frame - ${because} - so no card outside the team is called dead)`;
+    }
+    const { dead } = benched;
+    if (dead.length === 0) return "";
+    return ` (${namesCards(dead)} ${dead.length === 1 ? "is" : "are"} DEAD and not in the team)`;
+  }
+  function looksDisagree(one, other) {
+    return one.fielded !== other.fielded || one.empty.length !== other.empty.length;
+  }
+  var TeamSettle = class {
+    constructor(first, later, fieldedOnArrival) {
+      this.first = first;
+      this.later = later;
+      this.fieldedOnArrival = fieldedOnArrival;
+    }
+    get looks() {
+      return [this.first, ...this.later];
+    }
+    /** The reading acted on: the last one taken, which is the most settled one available. */
+    get settled() {
+      return this.later.at(-1) ?? this.first;
+    }
+    /**
+     * Whether anything about the team changed between readings that were meant to agree.
+     *
+     * Covers both halves of the same event: a count that moved while the settle was running, and a
+     * count that had already moved between the frame the loop arrived with and the first of these.
+     * Neither is an error - it is the screen being drawn - which is why this drives a log line and a
+     * kept frame and never a refusal. The handoff document proposed refusing on exactly this
+     * contradiction; implemented that way it would have aborted the healthy run that prompted all of
+     * it. This is a settle detector, not a safety check.
+     */
+    get screenWasMoving() {
+      const settled = this.settled;
+      if (this.looks.some((look) => looksDisagree(look, settled))) return true;
+      return this.fieldedOnArrival !== void 0 && this.fieldedOnArrival !== settled.fielded;
+    }
+    /** Whether the settled reading positively says a slot is empty, rather than merely failing to fill one. */
+    get sawAnEmptySlot() {
+      return this.settled.empty.length > 0;
+    }
+    /**
+     * The frame worth keeping: the first that disagreed with where the screen ended up.
+     *
+     * The same choice {@link DungeonRunner.keepUnsettledResultFrame} makes and for the same reason - a
+     * picture of the screen after it settled is not a picture of the problem, and by the time a second
+     * photograph could be taken the team has finished assembling. When nothing disagreed there is only
+     * one screen to photograph, and it is the one the decision was read from.
+     */
+    get frameWorthKeeping() {
+      const settled = this.settled;
+      const moved = this.looks.find((look) => looksDisagree(look, settled));
+      return (moved ?? settled).frame;
+    }
+    /**
+     * The line, or none when there was one look and it agreed with everything before it.
+     *
+     * Silent in the ordinary case on purpose: four battles in five read a full team on the first look,
+     * and a line saying so on every one of them would bury the ones worth reading.
+     *
+     * Says nothing about *why* there is no arrival count to compare against. Two things produce that -
+     * a healing swap between the two readings, and a strip the arrival frame could not be measured on -
+     * and naming one of them here is how a log line starts asserting something it did not check.
+     *
+     * Worded as the phone words it, down to the arrow between the counts. A triager holding a bundle
+     * from each client should be reading one sentence about one event, and the size of a full team is
+     * left out of it because the wait lines above and the refusal below both already carry that.
+     */
+    report() {
+      if (this.later.length === 0 && !this.screenWasMoving) return void 0;
+      const trail = this.looks.map((look) => `${look.fielded ?? "?"}/${look.empty.length}`).join(" -> ");
+      const looks = this.later.length === 0 ? "read once" : `read ${this.looks.length} times ${UNDERSTRENGTH_SETTLE_MS}ms apart`;
+      const arrival = this.fieldedOnArrival === void 0 ? "with no comparable count from the frame the run arrived with" : `against ${this.fieldedOnArrival} tick(s) on the frame the run arrived with`;
+      const moved = this.screenWasMoving ? " The screen was still being drawn, so the last of those is what was acted on." : "";
+      return `  ${looks} in case the game was still assembling the team; ticks/markers went ${trail}, ${arrival}.${moved}`;
+    }
+  };
   function describeCasualties(detection) {
     const { battleCasualties, state } = detection;
     return battleCasualties ? battleCasualties.diagnostics : `the last look found ${state}, which carries no casualty reading`;
@@ -2085,8 +2254,32 @@ ${this.message}`;
     lastChosenElement;
     lastScreenshot;
     templates;
-    /** Frames kept for {@link MAX_CASUALTY_SETTLE_FRAMES}, counted for this run only. */
-    casualtySettleFramesKept = 0;
+    /** Frames kept for {@link MAX_UNSETTLED_RESULT_FRAMES}, counted for this run only. */
+    unsettledResultFramesKept = 0;
+    /** Frames kept for {@link MAX_UNSETTLED_TEAM_FRAMES}, counted for this run only. */
+    unsettledTeamFramesKept = 0;
+    /**
+     * Which battle's casualty verdict has already been reached, or {@link NO_BATTLE_YET} before any.
+     *
+     * A verdict is a fact about a *battle*, not about a frame, and this loop sees one battle's result
+     * dialog more than once as a matter of routine: the dialog animates in, a click that lands while
+     * it is arriving is ignored, and the next read finds the same dialog again. Three battles in a
+     * hundred were counted twice that way before `resultAlreadyCounted` existed, and the same
+     * repeated sighting was still getting a second casualty reading long after the counting was fixed.
+     *
+     * **The phone is where that came due.** On 2026-09-08 an Android run read battle 7 of 25 as
+     * `noneDead`, collected and counted it, and then met {@link stopIfATitanDied} again on a dialog
+     * whose reward cards were still flying across the status row. Three unreadable readings later -
+     * the last two of them a save point - the run stopped at 7 of 25. This client has the identical
+     * shape and only luck between it and the same stop.
+     *
+     * Deliberately *not* `resultAlreadyCounted`. That flag is cleared by any screen that is not a
+     * result, so a save point read between two looks at one dialog re-arms it; `battlesStarted` only
+     * moves when a room is entered, which is exactly when a new verdict becomes owed. The sentinel
+     * matters too: a dialog left on screen by a previous session is met at `battlesStarted === 0`,
+     * belongs to nobody's count, and must still be read before it is dismissed.
+     */
+    casualtyVerdictDecidedFor = NO_BATTLE_YET;
     /** Kept on the instance so an abort can report how far the run got. */
     summary = {
       battlesStarted: 0,
@@ -2296,10 +2489,13 @@ ${this.message}`;
       await this.click(attackButtons[index].center);
     }
     async fieldTeamAndFight(autoBattle) {
-      if (this.lastChosenElement === "mix") {
+      await this.logTeamHealth();
+      const swapped = this.lastChosenElement === "mix";
+      const fieldedOnArrival = swapped ? void 0 : await this.countFieldedCardsOn(this.lastScreenshot);
+      if (swapped) {
         await this.placeHealingTitan();
       }
-      await this.refuseUnderstrengthTeam();
+      await this.refuseUnderstrengthTeam(fieldedOnArrival);
       this.log("Starting auto battle.");
       await this.click(autoBattle);
       await this.waitForBattleToFinish();
@@ -2313,38 +2509,165 @@ ${this.message}`;
      * them all, and the remaining titans then died in the following battle, which
      * spent a day's attempts on two losses. A stopped run costs a restart; this
      * costs the day.
+     *
+     * @param fieldedOnArrival the tick count off the frame the loop arrived with, when nothing has
+     *   moved the team since. Undefined means there is nothing to compare against, not that nothing
+     *   was fielded.
      */
-    async refuseUnderstrengthTeam() {
-      const { centers, marker } = this.config.coordinates.teamSelect.emptySlots;
+    async refuseUnderstrengthTeam(fieldedOnArrival) {
+      const { centers } = this.config.coordinates.teamSelect.emptySlots;
       const { requiredTitans, allowIncompleteTeam } = this.config.strategy.team;
-      let empty = [];
-      let fielded;
-      for (let attempt = 1; attempt <= UNDERSTRENGTH_CONFIRMATIONS; attempt += 1) {
-        fielded = await this.countFieldedCards();
-        if (fielded !== void 0 && fielded >= requiredTitans) {
-          this.log(`  ${fielded} titans are ticked in the roster; the team is full.`);
-          return;
+      const settle = await this.settledTeamStrength(requiredTitans, fieldedOnArrival);
+      const { fielded, empty } = settle.settled;
+      const report = settle.report();
+      if (report) this.log(report);
+      if (fielded !== void 0 && fielded >= requiredTitans) {
+        this.log(`  ${fielded} titans are ticked in the roster; the team is full.`);
+      } else if (empty.length > 0) {
+        if (!allowIncompleteTeam) {
+          throw await this.decline(
+            `The team is short of ${requiredTitans}: ${describeEmptySlots(empty, centers.length)}, and ${describeTickCount(fielded, requiredTitans)}, after ${UNDERSTRENGTH_CONFIRMATIONS} readings ${UNDERSTRENGTH_SETTLE_MS}ms apart (the marker count is a majority across ${EMPTY_SLOT_CONFIRMATIONS} frames taken back to back, the first of them being the frame kept below - the one the ticks were counted on). Fielding an understrength team loses the battle and the titans with it, so nothing was clicked. ` + await this.remedyForAShortTeam(settle.settled.frame, requiredTitans)
+          );
         }
-        empty = await this.emptySlotsAgreedAcrossFrames();
-        if (empty.length === 0) return;
-        if (attempt === UNDERSTRENGTH_CONFIRMATIONS) break;
-        this.log(
-          `  the team reads short (${describeTickCount(fielded, requiredTitans)}, ${describeEmptySlots(empty, centers.length)}); the screen may still be assembling, so waiting ${UNDERSTRENGTH_SETTLE_MS}ms and looking again (${attempt} of ${UNDERSTRENGTH_CONFIRMATIONS - 1}).`
-        );
-        await this.session.wait(UNDERSTRENGTH_SETTLE_MS);
-      }
-      if (allowIncompleteTeam) {
         this.log(
           `  ${empty.length} team slot(s) are empty, short of ${requiredTitans}, but incomplete teams are allowed; going in anyway.`
         );
-        return;
       }
-      throw await this.decline(
-        `The team is short of ${requiredTitans}: ${describeEmptySlots(empty, centers.length)}, and ${describeTickCount(fielded, requiredTitans)}, after ${UNDERSTRENGTH_CONFIRMATIONS} readings ${UNDERSTRENGTH_SETTLE_MS}ms apart. Fielding an understrength team loses the battle and the titans with it, so nothing was clicked. Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.`
-      );
+      await this.keepUnsettledTeamFrame(settle);
     }
     /**
-     * How many roster cards carry the in-team tick, or undefined if the strip
+     * What to do about a short team, which depends on whether a titan is dead rather than absent.
+     *
+     * The phone's `DungeonRunner.remedyForAShortTeam` in TypeScript, and it carries the whole of that
+     * function's reasoning because the two messages describe one event to one person. §3.6: a bundle
+     * from a phone and one from a browser that describe the same event differently is the divergence
+     * the house rule exists to prevent. This one used to end "Fill the team and run again, or set
+     * strategy.team.allowIncompleteTeam if that is what you meant", which is the same advice the phone
+     * gave, and after a death it is advice to do something the game will not permit until the titan is
+     * revived. That sentence is why a user filed a bug report about a rule that was working perfectly.
+     *
+     * The game drops a dead titan from the team and puts nobody in its place, but leaves its card on
+     * the strip with an empty health bar and the word DEAD across it. So the strip is asked directly,
+     * over every card it draws rather than only the fielded ones.
+     *
+     * ## Naming the death is not the same as knowing the day is over
+     *
+     * The count of living cards is in the message because leaving it out was nearly the second version
+     * of the same bug. Replaying this reading over the 89 team selects in two phone bundles: 21 frames
+     * carry a card with no health bar, six of them are refusals, and all six draw six cards of which
+     * **five still have health** while four are ticked. Saying the day was over would have sent a
+     * player away from a run that was one click from continuing.
+     *
+     * A living count that reaches `requiredTitans` is sound on any floor, because a scrolling strip can
+     * only hide titans and never invent them. The opposite claim is not, which is why the shortfall
+     * branch asks whether this floor draws every titan that could be fielded first.
+     *
+     * ## Why the geometry is measured here and not taken from {@link rosterGeometry}
+     *
+     * `visibleCardCount` means two different things in the two sources: derived, it is how many cards
+     * this screen *draws*; configured, it is how many the strip can hold. This message counts cards, so
+     * only the first answers its question — and on this client the difference is not academic.
+     * {@link RosterGeometrySource.forFrame} prefers the calibrated config and caches it, so an
+     * element-restricted floor drawing six cards would be read through a ten-card geometry, and the
+     * four health-bar boxes past the end of the strip find no green and report four titans dead that do
+     * not exist. Measured on bundle A's battle 27, that is exactly what happens: cards 6, 7, 8 and 9
+     * are named as casualties on a six-card strip.
+     *
+     * The sentence itself is {@link shortTeamRemedy}'s, and the split is not tidiness. No capture in
+     * this client's corpus can reach the death branch end to end: the only team select with a dead card
+     * on it is `..._live_teamSelect_deadMoloch.png`, and sweeping the shipped marker reading over every
+     * centre of that whole frame at 0.01 intervals finds nowhere at all that scores as a chevron - which
+     * is precisely why the settle pair uses it as its *no marker* half. So a run cannot be made to
+     * refuse on the one frame that has a death on it, and the wording would otherwise ship with nothing
+     * exercising it. Measuring here and composing there lets the three sentences be pinned directly.
+     * The phone has no such gap; its `TeamSettleTest` reaches the branch with a real fixture.
+     *
+     * @param frame the frame the settled tick count was read from - the same frame {@link endRun} is
+     *   about to file as `declined_`, so the card numbers here and the picture agree.
+     */
+    async remedyForAShortTeam(frame, requiredTitans) {
+      if (!frame) return shortTeamRemedy(void 0, requiredTitans, false);
+      const geometry = (await deriveRosterGeometry(frame)).geometry;
+      if (!geometry) return shortTeamRemedy(void 0, requiredTitans, false);
+      const cards = geometry.visibleCardCount;
+      const dead = [];
+      for (let index = 0; index < cards; index += 1) {
+        const health = await readHealthFraction(frame, healthBarBoxForCard(index, geometry));
+        if (health <= DEAD_HEALTH_THRESHOLD) dead.push(index);
+      }
+      const stripShowsEveryone = this.lastChosenElement !== void 0 && this.lastChosenElement !== "mix";
+      return shortTeamRemedy({ cards, dead }, requiredTitans, stripShowsEveryone);
+    }
+    /**
+     * Reads the team's strength until it stops changing, and hands back what it settled on.
+     *
+     * Stops the moment a reading comes back full, because the game fills slots and never empties them:
+     * full is where assembly ends, so a full reading is settled by construction and cannot become less
+     * full without this run clicking something. That keeps the whole cost off the four battles in five
+     * that read full on the first look. {@link UNDERSTRENGTH_CONFIRMATIONS} carries the measurement.
+     *
+     * Every other answer is looked at again, including a short count with no marker beside it. That
+     * used to return immediately, and it was the one remaining place a single frame decided to fight:
+     * a chevron occluded by an arriving titan reads as no chevron, and this method exists precisely
+     * because a frame taken during assembly cannot be believed. It costs the waits on a mixed floor,
+     * where a scrolling strip reports the same lower bound every time and nothing is ever going to
+     * change its mind - about 2.1s on the roughly one battle in five that is not full on arrival.
+     *
+     * A look that produces no frame does not end the settle. It costs a wait like any other look, so
+     * a single failed capture cannot skip the guard.
+     *
+     * {@link shouldStop} is deliberately not consulted, where the phone's twin does consult its own
+     * flag. Cutting the settle short leaves a half-settled reading to be acted on, and acting on one
+     * can refuse a team for being short when all that happened is that somebody pressed Stop - a false
+     * alarm about the one rule this repository already sends people chasing imaginary bugs over. This
+     * client honours a stop between loop iterations and nowhere else, the whole settle is 2.1s, and
+     * the battle wait after it is far longer.
+     */
+    async settledTeamStrength(requiredTitans, fieldedOnArrival) {
+      const { centers } = this.config.coordinates.teamSelect.emptySlots;
+      const first = await this.lookAtTheTeam(requiredTitans);
+      const later = [];
+      for (let attempt = 1; attempt < UNDERSTRENGTH_CONFIRMATIONS; attempt += 1) {
+        const previous = later.at(-1) ?? first;
+        if (previous.fielded !== void 0 && previous.fielded >= requiredTitans) break;
+        this.log(
+          `  the team reads short (${describeTickCount(previous.fielded, requiredTitans)}, ${describeEmptySlots(previous.empty, centers.length)}); the screen may still be assembling, so waiting ${UNDERSTRENGTH_SETTLE_MS}ms and looking again (${attempt} of ${UNDERSTRENGTH_CONFIRMATIONS - 1}).`
+        );
+        await this.session.wait(UNDERSTRENGTH_SETTLE_MS);
+        later.push(await this.lookAtTheTeam(requiredTitans));
+      }
+      return new TeamSettle(first, later, fieldedOnArrival);
+    }
+    /**
+     * One reading of the team: the ticks first, and the markers only if the ticks fall short.
+     *
+     * Count the in-team ticks first, because a tick proves something the arena markers only suggest.
+     * A card that has scrolled out of the strip takes its tick with it, so this can undercount - but
+     * nothing gives an unfielded card a tick, so it can never overcount. That makes "enough ticks" a
+     * proof the team is full, and the marker check is only needed when it falls short.
+     *
+     * Which matters because the marker check keeps being wrong in the expensive direction for a
+     * player: it has stopped full teams on an earth floor, on a mixed one, and at three different
+     * slots, every time because titan armour is gold and the arena is full of it. The ticks are not
+     * close - measured on a full team, fielded cards score 0.190-0.198 and the rest score 0.000.
+     *
+     * So a full tick count short-circuits before the markers are consulted, exactly as the phone's
+     * reading does, and a look that reads full carries no marker count at all rather than a stale one.
+     */
+    async lookAtTheTeam(requiredTitans) {
+      let frame;
+      try {
+        frame = await this.session.screenshot();
+        this.lastScreenshot = frame;
+      } catch {
+        return { fielded: void 0, empty: [], frame: void 0 };
+      }
+      const fielded = await this.countFieldedCardsOn(frame);
+      if (fielded !== void 0 && fielded >= requiredTitans) return { fielded, empty: [], frame };
+      return { fielded, empty: await this.emptySlotsAgreedAcrossFrames(frame), frame };
+    }
+    /**
+     * How many roster cards carry the in-team tick on a given frame, or undefined if the strip
      * could not be read at all.
      *
      * The two are worth telling apart even though both fall through to the marker
@@ -2352,11 +2675,14 @@ ${this.message}`;
      * count means the strip was read and the ticks were not there, while undefined
      * means the strip itself was not on screen yet - which is what a half-drawn
      * team-select screen looks like.
+     *
+     * Takes the frame rather than capturing one, so the same count can be made on the frame the loop
+     * arrived with and on a fresh one and the two compared. A capture of its own would have made them
+     * two readings of two screens, which is not a comparison of anything.
      */
-    async countFieldedCards() {
+    async countFieldedCardsOn(screenshot) {
+      if (!screenshot) return void 0;
       try {
-        const screenshot = await this.session.screenshot();
-        this.lastScreenshot = screenshot;
         const geometry = await this.rosterGeometry.forFrame(screenshot);
         if (!geometry) return void 0;
         let fielded = 0;
@@ -2367,6 +2693,127 @@ ${this.message}`;
       } catch {
         return void 0;
       }
+    }
+    /**
+     * Writes down the health of every titan about to fight.
+     *
+     * This client logged **nothing** about health outside the healing swap, and the swap runs only on
+     * a mixed floor and reads only its two candidates - so a browser run's log carried no health
+     * record at all on an element-restricted floor, which is most of them. A titan wearing down was
+     * invisible until the battle it died in. The state behind the v0.5 request is the case: on the
+     * phone a titan entered a room at 24% health, read and logged, with no rule at any level; here
+     * that fact would simply not have existed.
+     *
+     * Reading only. Nothing decides anything on these numbers, which is why it is allowed to give up
+     * quietly - no frame, no readable strip, nothing fielded, or a reading that threw is a missing log
+     * line and never a reason to interrupt a run. No capture either: it reads {@link lastScreenshot},
+     * the frame the detector has just classified.
+     *
+     * ## Why it arrives now and not with the phone's
+     *
+     * `healthBar.halfWidth` in `config/chrome.json` was 0.0256 - a 92px box around a 75px bar - so
+     * every health reading this client made under-read by about 18 points and a titan at full health
+     * reported 80-82%. Shipped then, this line would have printed numbers that quietly contradicted
+     * the healing decision logged beside it, which reads through the same configured box. The number
+     * is true now, so the line is worth having.
+     *
+     * ## Only the fielded cards, and the dead card that is therefore missing
+     *
+     * `team:` has to go on meaning the titans about to fight. But the game **drops a dead titan from
+     * the team** and puts nobody in its place, so the one card worth naming is exactly the one a
+     * fielded-only list skips - which made the phone's `DEAD` branch very nearly unreachable in a
+     * dungeon until it was found. So the strip's own cards are scanned and a dead one is named beside
+     * the team rather than inside it.
+     *
+     * ## Two sources, and which supplies what
+     *
+     * Positions and ticks come from {@link RosterGeometrySource}, the same geometry every other
+     * reading in this client uses. That is not interchangeable with a measured one here: the in-team
+     * tick is confirmed against `selectedTickShape`, and **a tick template is a crop**, so it only
+     * matches through the geometry it was cut with. Measured on
+     * `2026-08-07T18-39-51-944Z_calibrate_teamSelect.png`, the configured geometry finds three ticks
+     * and a derived one finds none - the same trap that broke two runs on portraits.
+     *
+     * The **card count** comes from the frame, and only that. Configured, `visibleCardCount` is how
+     * many cards the strip can *hold*; derived, it is how many this screen *draws*, and the benched
+     * clause needs the second because it is backed by an absence: a health-bar box past the end of the
+     * strip finds no green whatever happened there. Read through the configured count, one bundle's
+     * six-card strip reports `cards 6, 7, 8 and 9 are DEAD` - measured, not hypothesised. So when the
+     * derivation refuses, the claim is dropped and the line says which refusal it was; it is never
+     * replaced by a fallback that lets a card index outrun the strip.
+     *
+     * The two are not free to disagree quietly: `RosterGeometrySource` already reports any drift
+     * between the measured layout and the configured one when the run starts.
+     *
+     * ## It deliberately does not seed the settle
+     *
+     * The phone's twin returns its fielded count and that count becomes `TeamSettle`'s
+     * arrival-vs-settled comparison. Here it returns nothing, and {@link fieldTeamAndFight} goes on
+     * taking its own count through {@link countFieldedCardsOn}. The reason is the refusal above: this
+     * line is bounded by a derivation that genuinely refuses - a screen still assembling is precisely
+     * when it refuses - so a seed sourced from here would go undefined on exactly the frames the
+     * settle detector exists to notice, and the settle would lose its arrival comparison to make room
+     * for a log line. The phone has no such choice to make, because its geometry source falls back
+     * instead of refusing and its count is therefore always there.
+     *
+     * Nor is it cross-checked against that count. Both would be `isCardFielded` over one frame through
+     * one geometry, which is one signal read twice; §3.4 wants two signals that can fail differently,
+     * and comparing a measurement with itself asserts nothing.
+     */
+    async logTeamHealth() {
+      const frame = this.lastScreenshot;
+      if (!frame) return;
+      try {
+        const geometry = await this.rosterGeometry.forFrame(frame);
+        if (!geometry) return;
+        const measured = await deriveRosterGeometry(frame);
+        const cards = measured.geometry?.visibleCardCount ?? geometry.visibleCardCount;
+        const fielded = [];
+        const benchedDead = [];
+        for (let index = 0; index < cards; index += 1) {
+          const health = await readHealthFraction(frame, healthBarBoxForCard(index, geometry));
+          if (await this.isCardSelected(frame, index, geometry)) fielded.push({ index, health });
+          else if (health <= DEAD_HEALTH_THRESHOLD) benchedDead.push(index);
+        }
+        if (fielded.length === 0) return;
+        this.log(
+          teamHealthLine(
+            fielded,
+            measured.geometry ? { measured: true, dead: benchedDead } : { measured: false, why: stripRefusalFrom(measured.diagnostics) }
+          )
+        );
+      } catch {
+      }
+    }
+    /**
+     * Keeps the team select a fight was started on, when the reading behind it was not clean.
+     *
+     * A frame the settle actually read, never a fresh capture - §3.2, and the reason this is worth
+     * keeping at all: by the time a second photograph could be taken the screen has finished
+     * assembling, and a picture of a settled team says nothing about a decision made on an unsettled
+     * one. Which of the looks is worth the megabytes is {@link TeamSettle.frameWorthKeeping}'s to
+     * decide.
+     *
+     * Only for a battle that is about to be fought; a refusal's frame is kept by {@link endRun} under
+     * the `declined_` label instead. See {@link MAX_UNSETTLED_TEAM_FRAMES} for the two conditions and
+     * where the number came from.
+     *
+     * Silent when the cap is spent or the host has no filesystem: the in-page host saves nothing, and
+     * a run there should not claim to have kept a frame it did not.
+     */
+    async keepUnsettledTeamFrame(settle) {
+      if (!settle.screenWasMoving && !settle.sawAnEmptySlot) return;
+      if (this.unsettledTeamFramesKept >= MAX_UNSETTLED_TEAM_FRAMES) return;
+      const frame = settle.frameWorthKeeping;
+      if (!frame) return;
+      this.unsettledTeamFramesKept += 1;
+      const path = await this.session.saveScreenshot(
+        unsettledTeamFrameLabel(this.summary.battlesStarted),
+        frame
+      );
+      if (path === void 0) return;
+      const why = settle.screenWasMoving ? "the team was still being assembled when it was read" : "it was fought on a reading that saw an empty slot";
+      this.log(`  kept the team select this fight was started on at ${path}, because ${why}.`);
     }
     /**
      * The slots that read as empty on most of several frames, rather than on one.
@@ -2384,17 +2831,41 @@ ${this.message}`;
      * of mistake are on the table: demanding unanimity would let one bad frame
      * hide a genuinely empty slot, and that is the expensive direction.
      *
-     * Extra frames are only taken when the first one reports something, so the
-     * ordinary case - a full team, nothing flagged - still costs a single frame.
+     * The first ballot is the frame the caller already has - the one the ticks were counted on -
+     * rather than a fresh capture of the same screen. A look that flags a slot therefore costs three
+     * captures instead of four, and one that flags nothing costs the tick frame alone instead of two.
+     * It also makes the kept frame genuinely one of the frames voted on, which is what the evidence
+     * chain wanted all along.
+     *
+     * That is not a shortcut past the animation this vote exists to catch. What has to differ between
+     * ballots is the moment they were taken, and reusing the frame in hand widens the first interval
+     * rather than narrowing it: the tick count runs between that capture and this one, so ballot one
+     * now sits a whole roster reading further from ballot two than the discarded capture did.
+     * Measured on this machine at the browser's 1800x875, that reading is 1-7ms of work on top of an
+     * interval a capture already dominates. Every later interval is untouched.
+     *
+     * ## The extra frames do not become {@link lastScreenshot}, and that is the fix to a real bug
+     *
+     * They used to, one after another, and the last ballot was therefore the frame {@link endRun}
+     * filed as `declined_….png` when this rule stopped a run. So a triager opened the kept frame
+     * beside a message quoting a tick count read from a *different* capture and a marker count that is
+     * a majority across three more, and nothing anywhere said so. The saved frame matched neither half
+     * of the sentence it was filed as evidence for, and the mismatch is invisible: every one of these
+     * frames is the same team select a few hundred milliseconds apart, so the frame looks like it
+     * corresponds and usually nearly does.
+     *
+     * {@link TeamLook} had already settled which frame is the one worth keeping and why - the tick
+     * frame, because the marker half has no single frame to name - and this path was the one place
+     * that ruling was not honoured. A ballot in a vote is not a frame any decision is attributed to,
+     * so it does not get to claim the name; the one exception is the frame that already holds it on
+     * the ticks' account.
+     *
+     * @param inHand the frame the ticks were counted on, cast as the first ballot.
      */
-    async emptySlotsAgreedAcrossFrames() {
+    async emptySlotsAgreedAcrossFrames(inHand) {
       const { centers, marker } = this.config.coordinates.teamSelect.emptySlots;
-      const readSlots = async () => {
-        const frame = await this.session.screenshot();
-        this.lastScreenshot = frame;
-        return findEmptyTeamSlots(frame, centers, marker);
-      };
-      const first = await readSlots();
+      const readSlots = (frame) => findEmptyTeamSlots(frame, centers, marker);
+      const first = await readSlots(inHand);
       if (first.length === 0) return [];
       const votes = /* @__PURE__ */ new Map();
       const tally = (slots) => {
@@ -2402,7 +2873,7 @@ ${this.message}`;
       };
       tally(first);
       for (let round = 1; round < EMPTY_SLOT_CONFIRMATIONS; round += 1) {
-        tally(await readSlots());
+        tally(await readSlots(await this.session.screenshot()));
       }
       const majority = Math.ceil(EMPTY_SLOT_CONFIRMATIONS / 2);
       const agreed = [];
@@ -2424,6 +2895,19 @@ ${this.message}`;
      * A full team cannot be swapped with one click: the outgoing titan has to be
      * deselected first, and only then can the incoming one be added. Clicking the
      * incoming titan against a full team does nothing at all.
+     *
+     * ## One slot, and it returns nothing - both deliberate, and the phone's twin does neither
+     *
+     * It fills **one** slot rather than going on until the team is five. §3.7 gives the bot exactly
+     * one slot to exchange and forbids it the other four, so a second placement would be the bot
+     * picking a team - and there is no rule that could decide it, because `HealingPolicy.candidates`
+     * is an order of preference for one slot rather than a pool to draw a team from.
+     *
+     * It returns nothing, where the phone's twin now returns what it read on its way past. That is not
+     * drift: {@link fieldTeamAndFight} sets out why this client's post-swap reading cannot lose the
+     * evidence the phone's lost, so there is nothing for a pre-swap reading to rescue. Taking one
+     * anyway would cost a capture and a roster scan on every mixed floor to answer a question the
+     * check after the swap has already answered.
      */
     async placeHealingTitan() {
       if (this.config.strategy.healing.candidates.length === 0) {
@@ -2567,17 +3051,30 @@ ${this.message}`;
      * whoever reads it looking for a rendering fault that does not exist. That one stops on the first
      * dialog, and says what it actually found.
      *
+     * **Once per battle, and that bound lives here rather than at the call site.** The loop meets one
+     * battle's result dialog more than once as a matter of routine — the click is ignored while the
+     * dialog animates, and the next read finds it again — and the duplicate is only recognised further
+     * down, after the click, where the *tally* is decided. So a battle that already had a verdict was
+     * getting a second one taken off a dialog the game was busy animating away: a reading with nothing
+     * to gain and a run to lose. Keeping the scope here is what stops the caller having to know that a
+     * casualty verdict is a fact about a battle — it hands over a detection and gets back the detection
+     * to act on, exactly as before. {@link casualtyVerdictDecidedFor} has the run that proved it.
+     *
      * @returns the reading the caller should act on, which is a later one than it passed in whenever
      *   the first was unreadable and a re-read settled it.
      */
     async stopIfATitanDied(detection) {
       if (this.config.safety.stopWhenTitanDies !== true) return detection;
+      if (this.casualtyVerdictDecidedFor === this.summary.battlesStarted) return detection;
       let current = detection;
+      let firstUnreadableDialog;
+      const keptDialogs = [];
       for (let attempt = 1; attempt <= CASUALTY_READ_ATTEMPTS; attempt += 1) {
         const casualties = current.battleCasualties;
         if (casualties) {
           switch (casualties.verdict) {
             case "noneDead":
+              this.casualtyVerdictDecidedFor = this.summary.battlesStarted;
               this.log(
                 `  all ${casualties.fielded} titans that fought came out alive; collecting the result.`
               );
@@ -2609,26 +3106,37 @@ ${this.message}`;
               );
             // The one verdict a second look can genuinely change, which is why it is the only one that
             // falls through to the settle below.
+            //
+            // The frame is remembered on the way past, because by the time the refusal below is
+            // reached {@link lastScreenshot} has moved on to whatever the last look found — and on
+            // the Android run that prompted this, that was a save point.
             case "unreadable":
+              firstUnreadableDialog ??= this.lastScreenshot;
               break;
             default:
               assertEveryVerdictHandled(casualties.verdict);
           }
+        } else {
+          firstUnreadableDialog ??= this.lastScreenshot;
         }
         if (attempt === CASUALTY_READ_ATTEMPTS) break;
-        const kept = await this.keepCasualtySettleFrame();
+        const keptPath = await this.keepUnsettledResultFrame(this.summary.battlesStarted, attempt);
+        if (keptPath) keptDialogs.push(keptPath);
+        const kept = keptPath ? ` Kept the frame it read at ${keptPath}.` : "";
         this.log(
           `  cannot yet tell whether a titan died (${describeCasualties(current)}); the dialog is probably still animating in, so waiting ${CASUALTY_SETTLE_MS}ms and looking again (${attempt} of ${CASUALTY_READ_ATTEMPTS - 1}).${kept}`
         );
         await this.session.wait(CASUALTY_SETTLE_MS);
         current = await this.look();
       }
+      const alsoKept = keptDialogs.length === 0 ? "" : ` The later look(s) at the same dialog are at ${keptDialogs.join(", ")}, and may show a different screen if the game had moved on by then.`;
       throw await this.abort(
-        `Could not tell whether a titan died: ${CASUALTY_READ_ATTEMPTS} readings ${CASUALTY_SETTLE_MS}ms apart all came back unreadable (${describeCasualties(current)}). Clicking OK would dismiss a result nobody has read, which is the one thing safety.stopWhenTitanDies is on to prevent, so nothing was clicked and the dialog is still on screen. The frame that was read is saved beside this message: if it shows a team the status row is plainly legible under, the reading is at fault and the frame belongs in the fixtures. Turn safety.stopWhenTitanDies off to have the run collect the result and carry on regardless.`
+        `Could not tell whether a titan died: ${CASUALTY_READ_ATTEMPTS} readings ${CASUALTY_SETTLE_MS}ms apart all came back unreadable (${describeCasualties(current)}). Clicking OK would dismiss a result nobody has read, which is the one thing safety.stopWhenTitanDies is on to prevent, so nothing was clicked and the dialog is still on screen. The frame saved beside this message is the one the *first* of those readings was taken from: if it shows a team the status row is plainly legible under, the reading is at fault and the frame belongs in the fixtures.${alsoKept} Turn safety.stopWhenTitanDies off to have the run collect the result and carry on regardless.`,
+        firstUnreadableDialog
       );
     }
     /**
-     * Keeps the frame that fired a casualty settle, up to {@link MAX_CASUALTY_SETTLE_FRAMES} per run.
+     * Keeps the frame that fired a casualty settle, up to {@link MAX_UNSETTLED_RESULT_FRAMES} a run.
      *
      * Under a label of its own, deliberately. `safety.captureBattleResults` already writes the first
      * frame of every result dialog, but it writes all of them as `result`, so the one transient in a
@@ -2637,20 +3145,35 @@ ${this.message}`;
      * that feature's - what the reading saw when it could not decide, or decided wrongly - and a
      * question deserves its own filename.
      *
-     * Returns a sentence for the caller's log line rather than logging itself, so the wait and the
-     * frame it kept read as one event. Empty when the cap is spent or the host has no filesystem: the
-     * in-page host saves nothing, and a settle there should still say it waited.
+     * {@link lastScreenshot} - the frame the reading was actually taken from - and never a fresh
+     * capture, per §3.2. The settle resolves in under a second, measured on this very screen, so by
+     * the time a second photograph could be taken the dialog has settled and a picture of the screen
+     * after the problem is not a picture of the problem.
+     *
+     * The name comes from {@link unsettledResultFrameLabel} rather than from a template literal here,
+     * because a word that leaves this repository in a diagnostics zip is agreed in one place. Written
+     * at this call site it drifted from the phone's name for the same event, and the doc on that
+     * function is the ruling that settled which one survives.
+     *
+     * Returns where the frame landed, and undefined when nothing was written: the cap is spent, no
+     * screenshot has arrived, or the host has no filesystem — the in-page host saves nothing, and a
+     * settle there should still say it waited.
+     *
+     * **The caller builds the sentence, not this function.** It used to hand back the finished words
+     * so the wait and the frame it kept would read as one event, and they still do — but a refusal
+     * that names the frames it did not attach needs the paths themselves, and a sentence is not a
+     * path. The wording moved up a level unchanged.
+     *
+     * @param battleNumber the battle whose dialog this is, so a triager can pair it with the run log.
+     * @param look which reading of that dialog it was, because one battle can settle twice and the
+     *   pair is worth more than either frame alone - it is the same dialog 700ms apart.
      */
-    async keepCasualtySettleFrame() {
-      if (this.casualtySettleFramesKept >= MAX_CASUALTY_SETTLE_FRAMES) return "";
+    async keepUnsettledResultFrame(battleNumber, look) {
+      if (this.unsettledResultFramesKept >= MAX_UNSETTLED_RESULT_FRAMES) return void 0;
       const frame = this.lastScreenshot;
-      if (!frame) return "";
-      this.casualtySettleFramesKept += 1;
-      const path = await this.session.saveScreenshot(
-        `casualty_settle${this.casualtySettleFramesKept}`,
-        frame
-      );
-      return path === void 0 ? "" : ` Kept the frame it read at ${path}.`;
+      if (!frame) return void 0;
+      this.unsettledResultFramesKept += 1;
+      return this.session.saveScreenshot(unsettledResultFrameLabel(battleNumber, look), frame);
     }
     // ------------------------------------------------------------------ reading
     /**
@@ -2767,9 +3290,14 @@ ${this.message}`;
      * Every one of these has a fault behind it that somebody could fix, which is what the frame is
      * kept for. {@link decline} is the other ending and the two are not degrees of the same thing —
      * see {@link RunEnding}.
+     *
+     * @param evidence the frame this message is about, when that is not simply the last one looked at.
+     *   Almost every abort here fires on the screenshot it has just read and leaves this undefined; the
+     *   casualty settle is the exception, because it looks again before it gives up. See
+     *   {@link endRun}.
      */
-    async abort(message) {
-      return this.endRun("aborted", message);
+    async abort(message, evidence) {
+      return this.endRun("aborted", message, evidence);
     }
     /**
      * Ends the run because a rule said not to act, with nothing wrong and nothing pressed.
@@ -2786,24 +3314,33 @@ ${this.message}`;
       return this.endRun("declined", message);
     }
     /**
-     * Composes a run-ending error, keeping the exact frame that was last looked at.
+     * Composes a run-ending error, keeping the exact frame the message is about.
      *
      * §3.2: never a fresh capture. The map animates while it scrolls and a result dialog animates
      * while it arrives, so a re-capture here would file a different moment than the one the message
      * describes, and the evidence would contradict the reading it was meant to explain.
+     *
+     * **The last screenshot taken is the default and not the rule.** §3.2 asks for the frame that was
+     * *analysed*, and those are the same frame only while the caller stops on the reading it has just
+     * taken. A step that looks again before giving up — {@link stopIfATitanDied} is the one — leaves
+     * {@link lastScreenshot} pointing at the look that came last rather than the one that failed. The
+     * phone put a save-point screen in a bundle under `abort_` that way. Such a caller passes its own.
      *
      * `safety.saveScreenshotOnAbort` gates both endings despite its name. Renaming a config key is a
      * change to `config/chrome.json`, `config/android.json` and the Android parser at once, which is
      * a wider change than the vocabulary this belongs to; what it means is "keep the frame when a run
      * ends early", and it always did.
      */
-    async endRun(ending, message) {
+    async endRun(ending, message, evidence) {
       const progress = `Stopped after ${this.summary.battlesCompleted} of ${this.config.limits.maxBattles} battles resolved (${this.summary.battlesWon} won, ${this.summary.battlesLost} lost, ${this.summary.battlesStarted} started).`;
       if (!this.config.safety.saveScreenshotOnAbort) {
         return new RunEndedError(ending, `${message}
 ${progress}`);
       }
-      const path = await this.session.saveScreenshot(frameLabelFor(ending), this.lastScreenshot);
+      const path = await this.session.saveScreenshot(
+        frameLabelFor(ending),
+        evidence ?? this.lastScreenshot
+      );
       if (!path) return new RunEndedError(ending, `${message}
 ${progress}`);
       return new RunEndedError(ending, `${message}
@@ -3777,7 +4314,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.11.0" : "dev";
+  var SCRIPT_VERSION = true ? "0.12.0" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
