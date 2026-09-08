@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { trackMenuClick, trackMenuToggled } from '../analytics/events'
+import { trackMenuToggled, trackMenuClick, trackSupportClick } from '../analytics/events'
 import { listApps } from '../domain/appCatalog'
+import { SUPPORT_LABEL, SUPPORT_URL } from '../domain/support'
 import { StatusBadge } from './StatusBadge'
 
 const MENU_ID = 'primary-menu'
@@ -77,9 +78,19 @@ export function NavMenu() {
             </Link>
           ))}
 
+          <a
+            className="nav-link nav-link-secondary"
+            href={SUPPORT_URL}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => trackSupportClick('menu')}
+          >
+            {`☕ ${SUPPORT_LABEL}`}
+          </a>
+
           <Link
             to="/disclaimer"
-            className="nav-link nav-link-secondary"
+            className="nav-link nav-link-plain"
             onClick={() => trackMenuClick('Disclaimer', '/disclaimer')}
           >
             Disclaimer

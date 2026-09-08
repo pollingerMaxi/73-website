@@ -56,6 +56,16 @@ export function trackOutboundClick(
   trackEvent('outbound_click', { link_url: linkUrl, link_text: linkText, app_id: appId })
 }
 
+/**
+ * A click through to the contribution page.
+ *
+ * `placement` says which copy of the callout was used, so a page that actually prompts people to
+ * contribute can be told apart from one that merely carries the link.
+ */
+export function trackSupportClick(placement: string, appId?: string): void {
+  trackEvent('support_click', { placement, app_id: appId })
+}
+
 export function trackFooterClick(destination: string): void {
   trackEvent('footer_click', { destination })
 }

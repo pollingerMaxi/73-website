@@ -3,6 +3,7 @@ import { trackBackToApps, trackOutboundClick } from '../analytics/events'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { PlatformIcon } from '../components/PlatformIcon'
 import { SideloadDownload } from '../components/SideloadDownload'
+import { SupportCallout } from '../components/SupportCallout'
 import { UserscriptDownload } from '../components/UserscriptDownload'
 import { StatusBadge } from '../components/StatusBadge'
 import { PLATFORM_LABELS, findAppById } from '../domain/appCatalog'
@@ -115,6 +116,8 @@ export function AppDetailPage() {
           link will live.
         </p>
       )}
+
+      <SupportCallout placement="app_detail" appId={app.id} />
     </article>
   )
 }
