@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.12.0
+// @version      0.13.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -670,11 +670,14 @@
   }
 
   // src/vision/casualties.ts
+  var ANDROID_CANVAS_ASPECT = 2.145;
+  var BROWSER_CANVAS_ASPECT = 2.19;
   var MAX_TEAM_SIZE = 5;
-  var SLOT_PITCH = 0.0806;
-  var BAR_LEFT_OFFSET = -0.0281;
-  var BAR_PROBE_HALF_WIDTH = 6e-3;
-  var WORD_PROBE_HALF_WIDTH = 6e-3;
+  var SLOT_PITCH_IN_CANVAS_HEIGHTS = 0.17431;
+  var BAR_LEFT_OFFSET_IN_CANVAS_HEIGHTS = -0.0603;
+  var BAR_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS = 0.0129;
+  var SPINNER_HALF_WIDTH_IN_CANVAS_HEIGHTS = 0.039;
+  var WORD_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS = 0.0129;
   var BAR_GREEN = { hueMin: 45, hueMax: 125, minSaturation: 0.65 };
   var DEAD_RED = { hueBelow: 15, hueAbove: 345, minSaturation: 0.6 };
   var SIGNAL_MIN_COVERAGE = 0.15;
@@ -682,12 +685,55 @@
   var BAND_BRIDGE_IN_PITCHES = 0.3;
   var PORTRAIT_PROBE_TOP_IN_PITCHES = 3.2;
   var PORTRAIT_PROBE_BOTTOM_IN_PITCHES = 1.1;
-  var PORTRAIT_PROBE_HALF_WIDTH = 0.02;
+  var PORTRAIT_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS = 0.0429;
   var PORTRAIT_MIN_RELATIVE_SPREAD = 0.4;
   var CARD_BAND_MAX_GAP_IN_PITCHES = 0.9;
   var CARD_BAND_MIN_HEIGHT_IN_PITCHES = 1;
   var CARD_BAND_WINDOW_IN_PITCHES = 0.25;
   var MAX_FRAME_ASPECT = 2.27;
+  var DialogGeometry = class {
+    /** The game picture's height, in rows of this frame. */
+    canvasHeight;
+    /** The lattice pitch, as a fraction of the frame's width - which is what a centre is measured in. */
+    pitch;
+    barLeftOffset;
+    barProbeHalfWidth;
+    wordProbeHalfWidth;
+    spinnerHalfWidth;
+    portraitProbeHalfWidth;
+    /**
+     * The unit every `_IN_PITCHES` threshold below is stated in, as a fraction of the frame's height.
+     *
+     * It is not the pitch, and the name is older than the knowledge. `pitch / aspect` is the pitch
+     * converted from a width fraction to a height fraction *the wrong way round* - the right conversion
+     * multiplies by the aspect - so this is the real pitch divided by the aspect twice, and it comes out
+     * at about 0.215 of a card pitch: 54 rows of a 1440-row phone frame where a pitch is 251.
+     *
+     * It is left exactly as it was on purpose. Every threshold stated in these units - the status row's
+     * height floor, the band bridge, the card band's three, the portrait probe's two - was measured
+     * through this expression on real frames, and the thinnest of their margins is 1.26x. What the
+     * mistake costs is that the unit carries the frame's aspect, so the same game distance is 12% more
+     * of it in the browser than on the phone; the margins absorb that, which is why nothing has ever
+     * failed on it. Putting it right means dividing all seven by about 4.6 and re-deriving every figure
+     * their comments quote, which is a change of its own and not one to make while fixing the lattice.
+     */
+    pitchY;
+    constructor(frame, canvasAspect) {
+      this.canvasHeight = Math.min(frame.height, frame.width / canvasAspect);
+      const perCanvasHeight = frame.width === 0 ? 0 : this.canvasHeight / frame.width;
+      this.pitch = SLOT_PITCH_IN_CANVAS_HEIGHTS * perCanvasHeight;
+      this.barLeftOffset = BAR_LEFT_OFFSET_IN_CANVAS_HEIGHTS * perCanvasHeight;
+      this.barProbeHalfWidth = BAR_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS * perCanvasHeight;
+      this.wordProbeHalfWidth = WORD_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS * perCanvasHeight;
+      this.spinnerHalfWidth = SPINNER_HALF_WIDTH_IN_CANVAS_HEIGHTS * perCanvasHeight;
+      this.portraitProbeHalfWidth = PORTRAIT_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS * perCanvasHeight;
+      this.pitchY = frame.height === 0 ? 0 : this.pitch / (frame.width / frame.height);
+    }
+    /** Card centres for a team of `size`, left to right. */
+    centresFor(size) {
+      return Array.from({ length: size }, (_, index) => 0.5 + (index - (size - 1) / 2) * this.pitch);
+    }
+  };
   function bestBandFor(bands) {
     const ranked = bands.slice().sort((a, b) => {
       const byDeath = Number(reportsDeath(b)) - Number(reportsDeath(a));
@@ -698,7 +744,7 @@
   function reportsDeath(band) {
     return band.slots.some((slot) => slot.signal === "dead");
   }
-  function readBattleCasualties(frame, dialogBody) {
+  function readBattleCasualties(frame, dialogBody, canvasAspect) {
     if (dialogBody.h <= 0 || dialogBody.w <= 0 || frame.width === 0 || frame.height === 0) {
       return unreadable("the dialog has no body between its banner and its buttons", 0);
     }
@@ -706,11 +752,11 @@
     if (aspect > MAX_FRAME_ASPECT) {
       return refused(
         "unsupportedFrameShape",
-        `the frame is ${frame.width}x${frame.height}, an aspect of ${aspect.toFixed(4)}, wider than the ${MAX_FRAME_ASPECT} the team lattice survives; if the game is pillarboxed on this screen the cards are not where a fraction of the frame's width says they are`,
+        `the frame is ${frame.width}x${frame.height}, an aspect of ${aspect.toFixed(4)}, wider than the ${MAX_FRAME_ASPECT} this reading has ever been shown a capture of; the team lattice is placed from the height of the game's picture and nothing here has measured a picture that shape`,
         0
       );
     }
-    const scan = new DialogScan(frame, dialogBody);
+    const scan = new DialogScan(frame, dialogBody, canvasAspect);
     const refusals = [];
     for (let size = MAX_TEAM_SIZE; size >= 1; size -= 1) {
       const row = scan.statusRowFor(size);
@@ -727,6 +773,9 @@
   }
   var DialogScan = class {
     /**
+     * @param canvasAspect how wide the game draws its picture relative to how tall, on the client this
+     *   frame came from - {@link ANDROID_CANVAS_ASPECT} or {@link BROWSER_CANVAS_ASPECT}. Third and
+     *   required, because it is a fact about the frame, while the two below are test knobs.
      * @param bandBridgeInPitches defaults to the shipped {@link BAND_BRIDGE_IN_PITCHES}. A parameter
      *   only so a test can walk it down and watch what breaks, which is how that constant was measured
      *   on the Kotlin side in the first place - and the one death in the corpus turns out to depend on
@@ -736,16 +785,17 @@
      *   off, which is how both suites show what it is holding out rather than only that the corpus is
      *   green with it in. A rule whose absence cannot be demonstrated is a rule nobody can check.
      */
-    constructor(frame, body, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES) {
+    constructor(frame, body, canvasAspect, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES) {
       this.frame = frame;
       this.body = body;
       this.cardBandMaxGapInPitches = cardBandMaxGapInPitches;
-      this.aspect = frame.width / frame.height;
-      this.pitchY = SLOT_PITCH / this.aspect;
+      this.geometry = new DialogGeometry(frame, canvasAspect);
+      this.pitchY = this.geometry.pitchY;
       this.rowsPerPitch = this.pitchY * frame.height;
       this.bandBridgeRows = Math.max(1, Math.round(bandBridgeInPitches * this.rowsPerPitch));
     }
-    aspect;
+    /** Where this frame's lattice and windows fall. Public so a test can print what it probed. */
+    geometry;
     pitchY;
     rowsPerPitch;
     bandBridgeRows;
@@ -807,7 +857,7 @@
       return found;
     }
     closeBandsFor(size) {
-      const centres = latticeCentres(size);
+      const centres = this.geometry.centresFor(size);
       if (centres.some((centre) => centre < 0 || centre > 1)) return [];
       const columns = centres.map((centre) => this.probeColumn(centre));
       const cards = this.cardBandFor(size);
@@ -865,7 +915,7 @@
      */
     cardBandFor(size) {
       if (this.cardBands.has(size)) return this.cardBands.get(size);
-      const centres = latticeCentres(size);
+      const centres = this.geometry.centresFor(size);
       const band = centres.some((centre) => centre < 0 || centre > 1) ? void 0 : this.topmostCardBand(centres.map((centre) => this.probeColumn(centre)));
       this.cardBands.set(size, band);
       return band;
@@ -906,7 +956,7 @@
      * one, reports nobody dead, and is wrong about four titans.
      */
     confirmAgainstPortraits(size, row) {
-      const centres = latticeCentres(size);
+      const centres = this.geometry.centresFor(size);
       const alive = row.slots.filter((slot) => slot.signal === "alive").length;
       const dead = row.slots.filter((slot) => slot.signal === "dead").length;
       const reading = `${size} card(s) at y ${row.top.toFixed(3)}-${row.bottom.toFixed(3)}, ${alive} with a health bar, ${dead} marked DEAD [${row.slots.map(describe).join(" ")}]`;
@@ -917,7 +967,8 @@
           this.scannedFraction
         );
       }
-      for (const outboard of [centres[0] - SLOT_PITCH, centres[size - 1] + SLOT_PITCH]) {
+      const pitch = this.geometry.pitch;
+      for (const outboard of [centres[0] - pitch, centres[size - 1] + pitch]) {
         if (outboard < 0 || outboard > 1) continue;
         if (!this.hasPortrait(outboard, row.top)) continue;
         return {
@@ -941,8 +992,12 @@
     probeColumn(centre) {
       const cached = this.probes.get(centre);
       if (cached) return cached;
-      const bar = this.scanWindow(centre + BAR_LEFT_OFFSET, BAR_PROBE_HALF_WIDTH, isBarGreen);
-      const word = this.scanWindow(centre, WORD_PROBE_HALF_WIDTH, isDeadRed);
+      const bar = this.scanWindow(
+        centre + this.geometry.barLeftOffset,
+        this.geometry.barProbeHalfWidth,
+        isBarGreen
+      );
+      const word = this.scanWindow(centre, this.geometry.wordProbeHalfWidth, isDeadRed);
       const column = {
         readings: bar.coverage.map((barCoverage, row) => {
           const wordCoverage = word.coverage[row] ?? 0;
@@ -1006,9 +1061,9 @@
       const top = rowTop - PORTRAIT_PROBE_TOP_IN_PITCHES * this.pitchY;
       const bottom = rowTop - PORTRAIT_PROBE_BOTTOM_IN_PITCHES * this.pitchY;
       const box = {
-        x: centre - PORTRAIT_PROBE_HALF_WIDTH,
+        x: centre - this.geometry.portraitProbeHalfWidth,
         y: top,
-        w: 2 * PORTRAIT_PROBE_HALF_WIDTH,
+        w: 2 * this.geometry.portraitProbeHalfWidth,
         h: bottom - top
       };
       if (box.x < 0 || box.x + box.w > 1 || box.y < 0 || box.y + box.h > 1) return void 0;
@@ -1038,9 +1093,6 @@
   }
   function teamWasWiped(casualties) {
     return casualties.verdict === "someDead" && casualties.alive === 0;
-  }
-  function latticeCentres(size) {
-    return Array.from({ length: size }, (_, index) => 0.5 + (index - (size - 1) / 2) * SLOT_PITCH);
   }
   function isDecisive(signal) {
     return signal === "alive" || signal === "dead";
@@ -1173,6 +1225,19 @@
     constructor(config) {
       this.config = config;
     }
+    /**
+     * How wide the game draws its own picture, relative to how tall, on the client this config drives.
+     *
+     * The casualty lattice is a share of that picture's height rather than of the frame's, so this is
+     * the one thing the reading cannot work out for itself: a browser frame carries the page's header
+     * above the canvas and a phone frame is the phone's screen. Keyed off the backend rather than off
+     * `canvasArea`, which describes the same fact from the other end but only for the in-page path.
+     *
+     * See `ANDROID_CANVAS_ASPECT`, which carries both measurements.
+     */
+    get canvasAspect() {
+      return this.config.session.backend === "chrome" ? BROWSER_CANVAS_ASPECT : ANDROID_CANVAS_ASPECT;
+    }
     async detect(screenshot) {
       const [actionButtons, shopButtons, activateOrbs] = await Promise.all([
         findActionButtons(screenshot),
@@ -1223,7 +1288,11 @@
         );
         const foreign = await bannerForeignFraction(screenshot);
         const occluded = foreign >= BANNER_OCCLUDED_MIN;
-        const casualties = readBattleCasualties(screenshot, dialogBodyAbove(ok));
+        const casualties = readBattleCasualties(
+          screenshot,
+          dialogBodyAbove(ok),
+          this.canvasAspect
+        );
         const outcome = readOutcome(gold >= VICTORY_GOLD_MIN, occluded, casualties);
         return {
           state: "battleResult",
@@ -3102,7 +3171,7 @@ ${this.message}`;
             // named owner and a next step, which is exactly what an abort is for.
             case "unsupportedFrameShape":
               throw await this.abort(
-                `This screen is a shape the casualty reading has never been measured on, so the result was refused rather than guessed at: ${casualties.diagnostics}. The team lattice is a fraction of the frame's width, which is right only while the game's picture fills that width; past an aspect of ${MAX_FRAME_ASPECT} a pillarboxed picture puts every card somewhere else, and the reading has answered "nobody died" about a battle that killed a titan on exactly such a frame. Looking again cannot help - a shape belongs to the screen and not to the moment, so every dialog this run meets will be the same - which is why nothing was clicked, nothing was waited out, and the dialog is still on screen. What would fix it is a result-dialog capture from a screen this shape: the gate is there because no such frame exists in either corpus, not because the dialog is unreadable in principle, so send one in and the reading can be measured on it. Until then, either give the game a screen nearer 2:1 - this run is reading ${this.session.describe()} - or turn safety.stopWhenTitanDies off to have results collected unread.`
+                `This screen is a shape the casualty reading has never been measured on, so the result was refused rather than guessed at: ${casualties.diagnostics}. The team lattice is placed from the height of the game's own picture, and ${MAX_FRAME_ASPECT} is the ceiling on shapes that reading has been measured on - the widest real capture here is 2.2222 - so past it nothing has measured where the cards are drawn, and the reading refuses rather than answer "nobody died" about a battle that may have killed a titan. Looking again cannot help - a shape belongs to the screen and not to the moment, so every dialog this run meets will be the same - which is why nothing was clicked, nothing was waited out, and the dialog is still on screen. What would fix it is a result-dialog capture from a screen this shape: the gate is there because no such frame exists in either corpus, not because the dialog is unreadable in principle, so send one in and the reading can be measured on it. Until then, either give the game a screen nearer 2:1 - this run is reading ${this.session.describe()} - or turn safety.stopWhenTitanDies off to have results collected unread.`
               );
             // The one verdict a second look can genuinely change, which is why it is the only one that
             // falls through to the settle below.
@@ -4314,7 +4383,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.12.0" : "dev";
+  var SCRIPT_VERSION = true ? "0.13.0" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
