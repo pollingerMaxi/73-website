@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.13.0
+// @version      0.14.0
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -758,18 +758,23 @@
     }
     const scan = new DialogScan(frame, dialogBody, canvasAspect);
     const refusals = [];
+    let deathMarks = 0;
     for (let size = MAX_TEAM_SIZE; size >= 1; size -= 1) {
       const row = scan.statusRowFor(size);
       if (!row) continue;
       const reading = scan.confirmAgainstPortraits(size, row);
       if (reading.verdict !== "unreadable") return reading;
       refusals.push(reading.diagnostics);
+      deathMarks = Math.max(deathMarks, reading.deathMarksSeen ?? 0);
       if (reading.outboardCard) break;
     }
     const [widest, ...rest] = refusals;
     const setAside = scan.bandsSetAside;
     const reason = widest === void 0 ? "no status row under the portraits: no lattice of 1 to 5 cards had every card showing exactly one of a health bar and a DEAD word" : `${widest}${rest.length > 0 ? ` (and ${rest.length} narrower lattice(s) likewise)` : ""}`;
-    return unreadable(setAside === void 0 ? reason : `${reason}; ${setAside}`, scan.scannedFraction);
+    return {
+      ...unreadable(setAside === void 0 ? reason : `${reason}; ${setAside}`, scan.scannedFraction),
+      deathMarksSeen: deathMarks
+    };
   }
   var DialogScan = class {
     /**
@@ -962,10 +967,13 @@
       const reading = `${size} card(s) at y ${row.top.toFixed(3)}-${row.bottom.toFixed(3)}, ${alive} with a health bar, ${dead} marked DEAD [${row.slots.map(describe).join(" ")}]`;
       const missing = centres.filter((centre) => !this.hasPortrait(centre, row.top));
       if (missing.length > 0) {
-        return unreadable(
-          `${reading}; ${missing.length} of them had no card drawn above the mark`,
-          this.scannedFraction
-        );
+        return {
+          ...unreadable(
+            `${reading}; ${missing.length} of them had no card drawn above the mark`,
+            this.scannedFraction
+          ),
+          deathMarksSeen: dead
+        };
       }
       const pitch = this.geometry.pitch;
       for (const outboard of [centres[0] - pitch, centres[size - 1] + pitch]) {
@@ -976,7 +984,8 @@
             `${reading}; a further card is drawn at ${outboard.toFixed(3)} that no mark accounted for`,
             this.scannedFraction
           ),
-          outboardCard: true
+          outboardCard: true,
+          deathMarksSeen: dead
         };
       }
       return {
@@ -2171,6 +2180,7 @@ ${this.message}`;
   var CASUALTY_READ_ATTEMPTS = 3;
   var CASUALTY_SETTLE_MS = 700;
   var MAX_UNSETTLED_RESULT_FRAMES = 3;
+  var MAX_UNSETTLED_DEATH_FRAMES = 2;
   var NO_BATTLE_YET = -1;
   var MAX_STUCK_ROUNDS = 3;
   function describeEmptySlots(empty, checked) {
@@ -2325,6 +2335,8 @@ ${this.message}`;
     templates;
     /** Frames kept for {@link MAX_UNSETTLED_RESULT_FRAMES}, counted for this run only. */
     unsettledResultFramesKept = 0;
+    /** Frames kept for {@link MAX_UNSETTLED_DEATH_FRAMES}, counted for this run only. */
+    unsettledDeathFramesKept = 0;
     /** Frames kept for {@link MAX_UNSETTLED_TEAM_FRAMES}, counted for this run only. */
     unsettledTeamFramesKept = 0;
     /**
@@ -3189,7 +3201,11 @@ ${this.message}`;
           firstUnreadableDialog ??= this.lastScreenshot;
         }
         if (attempt === CASUALTY_READ_ATTEMPTS) break;
-        const keptPath = await this.keepUnsettledResultFrame(this.summary.battlesStarted, attempt);
+        const keptPath = await this.keepUnsettledResultFrame(
+          this.summary.battlesStarted,
+          attempt,
+          casualties
+        );
         if (keptPath) keptDialogs.push(keptPath);
         const kept = keptPath ? ` Kept the frame it read at ${keptPath}.` : "";
         this.log(
@@ -3237,11 +3253,18 @@ ${this.message}`;
      * @param look which reading of that dialog it was, because one battle can settle twice and the
      *   pair is worth more than either frame alone - it is the same dialog 700ms apart.
      */
-    async keepUnsettledResultFrame(battleNumber, look) {
-      if (this.unsettledResultFramesKept >= MAX_UNSETTLED_RESULT_FRAMES) return void 0;
+    async keepUnsettledResultFrame(battleNumber, look, reading) {
+      const marks = reading?.deathMarksSeen ?? 0;
+      const spent = marks > 0 ? this.unsettledDeathFramesKept >= MAX_UNSETTLED_DEATH_FRAMES : this.unsettledResultFramesKept >= MAX_UNSETTLED_RESULT_FRAMES;
+      if (spent) return void 0;
       const frame = this.lastScreenshot;
       if (!frame) return void 0;
-      this.unsettledResultFramesKept += 1;
+      if (marks > 0) {
+        this.unsettledDeathFramesKept += 1;
+        this.log(`    that dialog had ${marks} DEAD mark(s) under a lattice that did not close.`);
+      } else {
+        this.unsettledResultFramesKept += 1;
+      }
       return this.session.saveScreenshot(unsettledResultFrameLabel(battleNumber, look), frame);
     }
     // ------------------------------------------------------------------ reading
@@ -3462,6 +3485,218 @@ Frame saved to ${path}`, path);
     return Math.abs(canvas.width / canvas.height - calibrated.width / calibrated.height) <= ASPECT_TOLERANCE;
   }
 
+  // src/session/drawingBufferReader.ts
+  var EXACT_BLIT_RATIO = 2;
+  var CHANNELS = 4;
+  function createDrawingBufferReader(gl, canvas, viewport, canvasArea) {
+    const target = boxToPixels(canvasArea, viewport.width, viewport.height);
+    const fallback = new AveragedReadbackReader(gl, canvas, viewport, canvasArea);
+    const blit = BlitDownscaleReader.create(gl, canvas, viewport, target);
+    if (!blit) return fallback;
+    return new DegradingReader(blit, fallback);
+  }
+  var DegradingReader = class {
+    constructor(preferred, fallback) {
+      this.preferred = preferred;
+      this.fallback = fallback;
+    }
+    degraded = false;
+    read() {
+      if (this.degraded) return this.fallback.read();
+      const frame = this.preferred.read();
+      if (frame) return frame;
+      this.degraded = true;
+      this.preferred.release();
+      return this.fallback.read();
+    }
+    describe() {
+      return this.degraded ? this.fallback.describe() : this.preferred.describe();
+    }
+    release() {
+      this.preferred.release();
+      this.fallback.release();
+    }
+  };
+  var BlitDownscaleReader = class _BlitDownscaleReader {
+    constructor(gl, canvas, viewport, target) {
+      this.gl = gl;
+      this.canvas = canvas;
+      this.viewport = viewport;
+      this.target = target;
+      this.scratch = new Uint8Array(target.width * target.height * CHANNELS);
+    }
+    steps = [];
+    /** The drawing buffer size the current chain was built for. */
+    builtFor = { width: 0, height: 0 };
+    scratch;
+    static create(gl, canvas, viewport, target) {
+      const reader = new _BlitDownscaleReader(gl, canvas, viewport, target);
+      return reader.rebuildChain() ? reader : void 0;
+    }
+    describe() {
+      return `scaled on the GPU to ${this.target.width}x${this.target.height} and read back`;
+    }
+    /**
+     * Returns the frame, or `undefined` if the GPU refused the blit.
+     *
+     * `undefined` rather than a throw: a refusal here is a statement about the
+     * context that the caller answers by using the other reader, not a fault, and
+     * the run should not see it at all.
+     */
+    read() {
+      const { gl, canvas } = this;
+      if (canvas.width !== this.builtFor.width || canvas.height !== this.builtFor.height) {
+        if (!this.rebuildChain()) return void 0;
+      }
+      const previousRead = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING);
+      const previousDraw = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
+      while (gl.getError() !== gl.NO_ERROR) {
+      }
+      let sourceFramebuffer = null;
+      let sourceWidth = canvas.width;
+      let sourceHeight = canvas.height;
+      let flip = true;
+      for (const step of this.steps) {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, sourceFramebuffer);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, step.framebuffer);
+        gl.blitFramebuffer(
+          0,
+          flip ? sourceHeight : 0,
+          sourceWidth,
+          flip ? 0 : sourceHeight,
+          0,
+          0,
+          step.width,
+          step.height,
+          gl.COLOR_BUFFER_BIT,
+          gl.LINEAR
+        );
+        sourceFramebuffer = step.framebuffer;
+        sourceWidth = step.width;
+        sourceHeight = step.height;
+        flip = false;
+      }
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, sourceFramebuffer);
+      gl.readPixels(0, 0, this.target.width, this.target.height, gl.RGBA, gl.UNSIGNED_BYTE, this.scratch);
+      const failed = gl.getError() !== gl.NO_ERROR;
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, previousRead);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousDraw);
+      if (failed) return void 0;
+      return this.placeInViewport();
+    }
+    /**
+     * Copies the scaled canvas into the letterboxed viewport the constants were
+     * measured in.
+     *
+     * A fresh buffer each time rather than one reused across reads: a frame is
+     * handed to the vision layer and may outlive the next read, and a shared
+     * buffer would rewrite a frame somebody is still measuring. At 6 MB it is
+     * under a millisecond, against the 42 ms this function replaces.
+     */
+    placeInViewport() {
+      const data = new Uint8Array(this.viewport.width * this.viewport.height * CHANNELS);
+      const rowBytes = this.target.width * CHANNELS;
+      for (let y = 0; y < this.target.height; y += 1) {
+        const from = y * rowBytes;
+        const to = ((this.target.top + y) * this.viewport.width + this.target.left) * CHANNELS;
+        data.set(this.scratch.subarray(from, from + rowBytes), to);
+      }
+      return { data, width: this.viewport.width, height: this.viewport.height };
+    }
+    /**
+     * Builds the chain of halvings that ends at the target size.
+     *
+     * Halving rather than one blit straight to the target, because `LINEAR` only
+     * ever samples 2x2 and so stops being an average once the step is larger than
+     * that. At the two ratios that occur in practice the chain is a single step
+     * and exact; a 3x display reaches the target through one halving and a final
+     * step below two, which is where the approximation is confined.
+     */
+    rebuildChain() {
+      this.releaseSteps();
+      const sizes = [];
+      let width = this.canvas.width;
+      let height = this.canvas.height;
+      while (width >= this.target.width * EXACT_BLIT_RATIO * EXACT_BLIT_RATIO || height >= this.target.height * EXACT_BLIT_RATIO * EXACT_BLIT_RATIO) {
+        width = Math.max(this.target.width, Math.floor(width / EXACT_BLIT_RATIO));
+        height = Math.max(this.target.height, Math.floor(height / EXACT_BLIT_RATIO));
+        sizes.push({ width, height });
+      }
+      sizes.push({ width: this.target.width, height: this.target.height });
+      for (const size of sizes) {
+        const step = this.createStep(size.width, size.height);
+        if (!step) {
+          this.releaseSteps();
+          return false;
+        }
+        this.steps.push(step);
+      }
+      this.builtFor = { width: this.canvas.width, height: this.canvas.height };
+      return true;
+    }
+    createStep(width, height) {
+      const { gl } = this;
+      const framebuffer = gl.createFramebuffer();
+      const renderbuffer = gl.createRenderbuffer();
+      if (!framebuffer || !renderbuffer) return void 0;
+      const previous = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, width, height);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, renderbuffer);
+      const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, previous);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+      if (!complete) {
+        gl.deleteFramebuffer(framebuffer);
+        gl.deleteRenderbuffer(renderbuffer);
+        return void 0;
+      }
+      return { framebuffer, renderbuffer, width, height };
+    }
+    releaseSteps() {
+      for (const step of this.steps) {
+        this.gl.deleteFramebuffer(step.framebuffer);
+        this.gl.deleteRenderbuffer(step.renderbuffer);
+      }
+      this.steps = [];
+      this.builtFor = { width: 0, height: 0 };
+    }
+    release() {
+      this.releaseSteps();
+    }
+  };
+  var AveragedReadbackReader = class {
+    constructor(gl, canvas, viewport, canvasArea) {
+      this.gl = gl;
+      this.canvas = canvas;
+      this.viewport = viewport;
+      this.canvasArea = canvasArea;
+    }
+    describe() {
+      return "read whole and averaged down in JavaScript";
+    }
+    read() {
+      const width = this.canvas.width;
+      const height = this.canvas.height;
+      const raw = new Uint8Array(width * height * CHANNELS);
+      this.gl.readPixels(0, 0, width, height, this.gl.RGBA, this.gl.UNSIGNED_BYTE, raw);
+      const canvasFrame = { data: flipVertically(raw, width, height), width, height };
+      return presentCanvasAsViewport(canvasFrame, this.viewport, this.canvasArea);
+    }
+    release() {
+    }
+  };
+  function flipVertically(source, width, height) {
+    const rowBytes = width * CHANNELS;
+    const flipped = new Uint8Array(source.length);
+    for (let y = 0; y < height; y += 1) {
+      const from = (height - 1 - y) * rowBytes;
+      flipped.set(source.subarray(from, from + rowBytes), y * rowBytes);
+    }
+    return flipped;
+  }
+
   // src/session/BrowserGameSession.ts
   var FRAME_TIMEOUT_MS = 2e4;
   var BrowserGameSession = class {
@@ -3473,18 +3708,22 @@ Frame saved to ${path}`, path);
       this.notice = notice;
     }
     gl;
+    reader;
     /** Resolvers waiting for the next painted frame. */
     pending = [];
     hooked = false;
     contextWatched = false;
     describe() {
       const { width, height } = this.calibratedViewport;
-      return `the page this script is running in (canvas ${this.canvas.width}x${this.canvas.height}, presented as ${width}x${height})`;
+      const frames = this.reader ? `, ${this.reader.describe()}` : "";
+      return `the page this script is running in (canvas ${this.canvas.width}x${this.canvas.height}, presented as ${width}x${height}${frames})`;
     }
     async open() {
       const gl = this.canvas.getContext("webgl2", { preserveDrawingBuffer: true }) ?? this.canvas.getContext("webgl2");
       if (!gl) throw new Error("The game canvas has no WebGL2 context to read.");
       this.gl = gl;
+      this.reader?.release();
+      this.reader = createDrawingBufferReader(gl, this.canvas, this.calibratedViewport, this.canvasArea);
       this.hookAnimationFrame();
       this.watchForContextLoss();
       return true;
@@ -3511,6 +3750,8 @@ Frame saved to ${path}`, path);
     }
     async close() {
       this.pending = [];
+      this.reader?.release();
+      this.reader = void 0;
     }
     /**
      * Reads pixels back immediately after the game has drawn.
@@ -3635,15 +3876,10 @@ Frame saved to ${path}`, path);
     }
     /** Runs inside the animation frame, where the drawing buffer is still valid. */
     drainPendingReads() {
-      if (this.pending.length === 0 || !this.gl) return;
+      if (this.pending.length === 0 || !this.reader) return;
       const waiting = this.pending;
       this.pending = [];
-      const width = this.canvas.width;
-      const height = this.canvas.height;
-      const raw = new Uint8Array(width * height * 4);
-      this.gl.readPixels(0, 0, width, height, this.gl.RGBA, this.gl.UNSIGNED_BYTE, raw);
-      const canvasFrame = { data: flipVertically(raw, width, height), width, height };
-      const frame = presentCanvasAsViewport(canvasFrame, this.calibratedViewport, this.canvasArea);
+      const frame = this.reader.read();
       for (const resolve of waiting) resolve(frame);
     }
     fireMouse(type, clientX, clientY, buttons) {
@@ -3661,15 +3897,6 @@ Frame saved to ${path}`, path);
       this.canvas.dispatchEvent(event);
     }
   };
-  function flipVertically(source, width, height) {
-    const rowBytes = width * 4;
-    const flipped = new Uint8Array(source.length);
-    for (let y = 0; y < height; y += 1) {
-      const from = (height - 1 - y) * rowBytes;
-      flipped.set(source.subarray(from, from + rowBytes), y * rowBytes);
-    }
-    return flipped;
-  }
 
   // src/vision/portraitLibrary.ts
   var PrecomputedPortraits = class {
@@ -4383,7 +4610,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.13.0" : "dev";
+  var SCRIPT_VERSION = true ? "0.14.0" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
