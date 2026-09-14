@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { SiteLayout } from './components/SiteLayout'
+import { useReloadOnNewBuild } from './hooks/useReloadOnNewBuild'
 import { listAppIdRedirects } from './domain/appCatalog'
 import { HomePage } from './pages/HomePage'
 import { AppDetailPage } from './pages/AppDetailPage'
@@ -7,6 +8,8 @@ import { DisclaimerPage } from './pages/DisclaimerPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 export function App() {
+  useReloadOnNewBuild()
+
   return (
     <BrowserRouter>
       <Routes>
