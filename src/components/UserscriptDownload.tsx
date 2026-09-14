@@ -74,6 +74,8 @@ export function UserscriptDownload({
       <a
         className="button button-primary"
         href={manifest.url}
+        target="_blank"
+        rel="noreferrer"
         onClick={() => trackFileDownload(appId, manifest.url, manifest.version)}
       >
         Install {manifest.version} with Tampermonkey
