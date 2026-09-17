@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.14.0
+// @version      0.14.1
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -690,6 +690,7 @@
   var CARD_BAND_MAX_GAP_IN_PITCHES = 0.9;
   var CARD_BAND_MIN_HEIGHT_IN_PITCHES = 1;
   var CARD_BAND_WINDOW_IN_PITCHES = 0.25;
+  var CARD_BAND_MAX_HEIGHT_IN_PITCHES = 7.8;
   var MAX_FRAME_ASPECT = 2.27;
   var DialogGeometry = class {
     /** The game picture's height, in rows of this frame. */
@@ -744,7 +745,7 @@
   function reportsDeath(band) {
     return band.slots.some((slot) => slot.signal === "dead");
   }
-  function readBattleCasualties(frame, dialogBody, canvasAspect) {
+  function readBattleCasualties(frame, dialogBody, canvasAspect, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES) {
     if (dialogBody.h <= 0 || dialogBody.w <= 0 || frame.width === 0 || frame.height === 0) {
       return unreadable("the dialog has no body between its banner and its buttons", 0);
     }
@@ -756,7 +757,14 @@
         0
       );
     }
-    const scan = new DialogScan(frame, dialogBody, canvasAspect);
+    const scan = new DialogScan(
+      frame,
+      dialogBody,
+      canvasAspect,
+      void 0,
+      void 0,
+      cardBandMaxHeightInPitches
+    );
     const refusals = [];
     let deathMarks = 0;
     for (let size = MAX_TEAM_SIZE; size >= 1; size -= 1) {
@@ -769,10 +777,10 @@
       if (reading.outboardCard) break;
     }
     const [widest, ...rest] = refusals;
-    const setAside = scan.bandsSetAside;
     const reason = widest === void 0 ? "no status row under the portraits: no lattice of 1 to 5 cards had every card showing exactly one of a health bar and a DEAD word" : `${widest}${rest.length > 0 ? ` (and ${rest.length} narrower lattice(s) likewise)` : ""}`;
+    const asides = [scan.bandsSetAside, scan.cardBandsOvergrown].filter((aside) => aside !== void 0);
     return {
-      ...unreadable(setAside === void 0 ? reason : `${reason}; ${setAside}`, scan.scannedFraction),
+      ...unreadable([reason, ...asides].join("; "), scan.scannedFraction),
       deathMarksSeen: deathMarks
     };
   }
@@ -789,11 +797,16 @@
      *   parameter for the same reason and a sharper one: passing `Infinity` here turns the distance gate
      *   off, which is how both suites show what it is holding out rather than only that the corpus is
      *   green with it in. A rule whose absence cannot be demonstrated is a rule nobody can check.
+     * @param cardBandMaxHeightInPitches defaults to the shipped
+     *   {@link CARD_BAND_MAX_HEIGHT_IN_PITCHES}, and is a knob for the same reason again: `Infinity`
+     *   turns the height ceiling off, which is how both suites show that it - and not the widest-first
+     *   ordering behind it - is what holds the loot animation out of `..._lootBridgedTheCardBand_unreadable.png`.
      */
-    constructor(frame, body, canvasAspect, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES) {
+    constructor(frame, body, canvasAspect, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES) {
       this.frame = frame;
       this.body = body;
       this.cardBandMaxGapInPitches = cardBandMaxGapInPitches;
+      this.cardBandMaxHeightInPitches = cardBandMaxHeightInPitches;
       this.geometry = new DialogGeometry(frame, canvasAspect);
       this.pitchY = this.geometry.pitchY;
       this.rowsPerPitch = this.pitchY * frame.height;
@@ -808,6 +821,8 @@
     cardBands = /* @__PURE__ */ new Map();
     bands = /* @__PURE__ */ new Map();
     setAside = [];
+    /** Band heights that {@link CARD_BAND_MAX_HEIGHT_IN_PITCHES} rejected, one per lattice. */
+    overgrownCardBands = [];
     scannedPixels = 0;
     /** Share of the frame every crop taken so far has covered. */
     get scannedFraction() {
@@ -816,6 +831,19 @@
     /** {@link STATUS_ROW_MIN_HEIGHT_IN_PITCHES} in rows of this frame. Two rows at the very least. */
     get statusRowMinRows() {
       return Math.max(2, Math.round(STATUS_ROW_MIN_HEIGHT_IN_PITCHES * this.rowsPerPitch));
+    }
+    /**
+     * What the height ceiling threw away, in the words a refusal needs.
+     *
+     * Separate from {@link bandsSetAside} because it is a different story and the two must not be told
+     * as one: a band set aside sat too far under the cards, while this is the cards themselves having
+     * grown down over the gap. Without it the log would say "no card band above them at all" about a
+     * dialog whose cards were found and then rejected, which sends the reader looking for a half-drawn
+     * team when what is on the frame is a loot animation. §3.2.
+     */
+    get cardBandsOvergrown() {
+      if (this.overgrownCardBands.length === 0) return void 0;
+      return `${this.overgrownCardBands.length} card band(s) ran ${Math.min(...this.overgrownCardBands).toFixed(2)}-${Math.max(...this.overgrownCardBands).toFixed(2)} pitches deep, past the ${CARD_BAND_MAX_HEIGHT_IN_PITCHES} the cards stop within, so something is drawn over the gap their status row needs`;
     }
     /**
      * What the distance gate threw away, in the words a refusal needs.
@@ -941,6 +969,10 @@
         if (start < 0) continue;
         const heightInPitches = (window2 - start) / this.rowsPerPitch;
         if (window2 - start >= minimumRows) {
+          if (heightInPitches > this.cardBandMaxHeightInPitches) {
+            this.overgrownCardBands.push(heightInPitches);
+            return void 0;
+          }
           return {
             bottom: this.toFrameY(window2 - 1 + windowRows, rowCount),
             heightInPitches,
@@ -3053,6 +3085,13 @@ ${this.message}`;
      * moment after collecting, long enough to be recognised and clicked a second
      * time. Clicking a spent save point does nothing, so the run can simply carry
      * on; a genuine loop is caught by the stuck-round counter instead.
+     *
+     * **Not fatal is not the same as not waited for, and this used to hand back the moment the first
+     * wait expired.** A dialog that is late rather than absent then arrives with nobody left looking
+     * for it, and the main loop meets a lone green button — which it refuses to tap anywhere else, for
+     * good reason. So the two waits below are now one window rather than a wait and a return: see the
+     * comment at the timeout for the run it cost, and `MAX_CHAINED_SAVE_POINT_DIALOGS` for why looking
+     * twice more is bounded rather than open-ended.
      */
     async collectSavePointLoot() {
       const collect = await this.retry(async () => {
@@ -3061,11 +3100,12 @@ ${this.message}`;
         return buttons.find((blob) => blob.center.y > 0.6);
       });
       if (!collect) {
-        this.log("No Collect dialog appeared; treating this save point as already spent.");
-        return;
+        this.log("No Collect dialog appeared; waiting once more in case it is late, not absent.");
+      } else {
+        this.log("Collecting save-point loot.");
+        await this.click(collect.center);
       }
-      this.log("Collecting save-point loot.");
-      await this.click(collect.center);
+      let collected = collect ? 1 : 0;
       for (let extra = 0; extra < MAX_CHAINED_SAVE_POINT_DIALOGS; extra += 1) {
         const another = await this.retry(async () => {
           const shot = await this.session.screenshot();
@@ -3073,8 +3113,11 @@ ${this.message}`;
           return buttons.find((blob) => blob.center.y > 0.6);
         });
         if (!another) break;
-        this.log("Another save-point dialog; collecting that too.");
+        this.log(
+          collected === 0 ? "  the Collect dialog arrived late after all; collecting it." : "Another save-point dialog; collecting that too."
+        );
         await this.click(another.center);
+        collected += 1;
       }
       const cleared = await this.retry(async () => {
         const { state } = await this.look();
@@ -4610,7 +4653,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.14.0" : "dev";
+  var SCRIPT_VERSION = true ? "0.14.1" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
