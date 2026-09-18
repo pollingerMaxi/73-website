@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.14.1
+// @version      0.14.2
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -681,6 +681,7 @@
   var BAR_GREEN = { hueMin: 45, hueMax: 125, minSaturation: 0.65 };
   var DEAD_RED = { hueBelow: 15, hueAbove: 345, minSaturation: 0.6 };
   var SIGNAL_MIN_COVERAGE = 0.15;
+  var BAR_MAX_COVERAGE = 0.79;
   var STATUS_ROW_MIN_HEIGHT_IN_PITCHES = 0.22;
   var BAND_BRIDGE_IN_PITCHES = 0.3;
   var PORTRAIT_PROBE_TOP_IN_PITCHES = 3.2;
@@ -745,7 +746,7 @@
   function reportsDeath(band) {
     return band.slots.some((slot) => slot.signal === "dead");
   }
-  function readBattleCasualties(frame, dialogBody, canvasAspect, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES) {
+  function readBattleCasualties(frame, dialogBody, canvasAspect, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE) {
     if (dialogBody.h <= 0 || dialogBody.w <= 0 || frame.width === 0 || frame.height === 0) {
       return unreadable("the dialog has no body between its banner and its buttons", 0);
     }
@@ -763,7 +764,8 @@
       canvasAspect,
       void 0,
       void 0,
-      cardBandMaxHeightInPitches
+      cardBandMaxHeightInPitches,
+      barMaxCoverage
     );
     const refusals = [];
     let deathMarks = 0;
@@ -774,7 +776,7 @@
       if (reading.verdict !== "unreadable") return reading;
       refusals.push(reading.diagnostics);
       deathMarks = Math.max(deathMarks, reading.deathMarksSeen ?? 0);
-      if (reading.outboardCard) break;
+      if (reading.outboardCard || reading.floodedWindow) break;
     }
     const [widest, ...rest] = refusals;
     const reason = widest === void 0 ? "no status row under the portraits: no lattice of 1 to 5 cards had every card showing exactly one of a health bar and a DEAD word" : `${widest}${rest.length > 0 ? ` (and ${rest.length} narrower lattice(s) likewise)` : ""}`;
@@ -801,12 +803,17 @@
      *   {@link CARD_BAND_MAX_HEIGHT_IN_PITCHES}, and is a knob for the same reason again: `Infinity`
      *   turns the height ceiling off, which is how both suites show that it - and not the widest-first
      *   ordering behind it - is what holds the loot animation out of `..._lootBridgedTheCardBand_unreadable.png`.
+     * @param barMaxCoverage defaults to the shipped {@link BAR_MAX_COVERAGE}, and `Infinity` turns the
+     *   ceiling off. The same knob for the same reason as the three above: what this one holds out is
+     *   a finished `someDead` on a frame where nobody died, and a rule whose absence cannot be
+     *   demonstrated is a rule nobody can check.
      */
-    constructor(frame, body, canvasAspect, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES) {
+    constructor(frame, body, canvasAspect, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE) {
       this.frame = frame;
       this.body = body;
       this.cardBandMaxGapInPitches = cardBandMaxGapInPitches;
       this.cardBandMaxHeightInPitches = cardBandMaxHeightInPitches;
+      this.barMaxCoverage = barMaxCoverage;
       this.geometry = new DialogGeometry(frame, canvasAspect);
       this.pitchY = this.geometry.pitchY;
       this.rowsPerPitch = this.pitchY * frame.height;
@@ -1017,6 +1024,19 @@
             this.scannedFraction
           ),
           outboardCard: true,
+          deathMarksSeen: dead
+        };
+      }
+      const flooded = row.slots.filter((slot) => slot.barCoverage >= this.barMaxCoverage);
+      if (flooded.length > 0) {
+        return {
+          ...unreadable(
+            `${reading}; ${flooded.length} of them carried more bar green than a bar can, past the ${BAR_MAX_COVERAGE} a bar drawn from its own left edge reaches, so something is drawn over the mark there`,
+            this.scannedFraction
+          ),
+          floodedWindow: true,
+          // Carried for the reason the outboard refusal carries it: this is the frame worth keeping,
+          // and it is kept out of the budget that exists for refusals with a death under them.
           deathMarksSeen: dead
         };
       }
@@ -4653,7 +4673,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.14.1" : "dev";
+  var SCRIPT_VERSION = true ? "0.14.2" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
