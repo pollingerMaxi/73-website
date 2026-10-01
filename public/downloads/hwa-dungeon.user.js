@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.14.2
+// @version      0.14.3
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -3551,6 +3551,7 @@ Frame saved to ${path}`, path);
   // src/session/drawingBufferReader.ts
   var EXACT_BLIT_RATIO = 2;
   var CHANNELS = 4;
+  var BLIT_REFUSED = Symbol("the GPU refused the blit");
   function createDrawingBufferReader(gl, canvas, viewport, canvasArea) {
     const target = boxToPixels(canvasArea, viewport.width, viewport.height);
     const fallback = new AveragedReadbackReader(gl, canvas, viewport, canvasArea);
@@ -3567,7 +3568,7 @@ Frame saved to ${path}`, path);
     read() {
       if (this.degraded) return this.fallback.read();
       const frame = this.preferred.read();
-      if (frame) return frame;
+      if (frame !== BLIT_REFUSED) return frame;
       this.degraded = true;
       this.preferred.release();
       return this.fallback.read();
@@ -3600,16 +3601,17 @@ Frame saved to ${path}`, path);
       return `scaled on the GPU to ${this.target.width}x${this.target.height} and read back`;
     }
     /**
-     * Returns the frame, or `undefined` if the GPU refused the blit.
+     * Returns the frame, `undefined` if the buffer had been cleared, or
+     * `BLIT_REFUSED` if the GPU refused the blit.
      *
-     * `undefined` rather than a throw: a refusal here is a statement about the
+     * A value rather than a throw for the refusal: it is a statement about the
      * context that the caller answers by using the other reader, not a fault, and
      * the run should not see it at all.
      */
     read() {
       const { gl, canvas } = this;
       if (canvas.width !== this.builtFor.width || canvas.height !== this.builtFor.height) {
-        if (!this.rebuildChain()) return void 0;
+        if (!this.rebuildChain()) return BLIT_REFUSED;
       }
       const previousRead = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING);
       const previousDraw = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
@@ -3644,7 +3646,8 @@ Frame saved to ${path}`, path);
       const failed = gl.getError() !== gl.NO_ERROR;
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, previousRead);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousDraw);
-      if (failed) return void 0;
+      if (failed) return BLIT_REFUSED;
+      if (isClearedBuffer(this.scratch)) return void 0;
       return this.placeInViewport();
     }
     /**
@@ -3744,12 +3747,19 @@ Frame saved to ${path}`, path);
       const height = this.canvas.height;
       const raw = new Uint8Array(width * height * CHANNELS);
       this.gl.readPixels(0, 0, width, height, this.gl.RGBA, this.gl.UNSIGNED_BYTE, raw);
+      if (isClearedBuffer(raw)) return void 0;
       const canvasFrame = { data: flipVertically(raw, width, height), width, height };
       return presentCanvasAsViewport(canvasFrame, this.viewport, this.canvasArea);
     }
     release() {
     }
   };
+  function isClearedBuffer(pixels) {
+    for (let index = 0; index < pixels.length; index += 1) {
+      if (pixels[index] !== 0) return false;
+    }
+    return true;
+  }
   function flipVertically(source, width, height) {
     const rowBytes = width * CHANNELS;
     const flipped = new Uint8Array(source.length);
@@ -3763,18 +3773,18 @@ Frame saved to ${path}`, path);
   // src/session/BrowserGameSession.ts
   var FRAME_TIMEOUT_MS = 2e4;
   var BrowserGameSession = class {
-    constructor(canvas, calibratedViewport, canvasArea, betweenClicksMs, notice = () => void 0) {
+    constructor(canvas, calibratedViewport, canvasArea, betweenClicksMs, notice = () => void 0, createReader = createDrawingBufferReader) {
       this.canvas = canvas;
       this.calibratedViewport = calibratedViewport;
       this.canvasArea = canvasArea;
       this.betweenClicksMs = betweenClicksMs;
       this.notice = notice;
+      this.createReader = createReader;
     }
     gl;
     reader;
-    /** Resolvers waiting for the next painted frame. */
     pending = [];
-    hooked = false;
+    readRequested = false;
     contextWatched = false;
     describe() {
       const { width, height } = this.calibratedViewport;
@@ -3786,8 +3796,7 @@ Frame saved to ${path}`, path);
       if (!gl) throw new Error("The game canvas has no WebGL2 context to read.");
       this.gl = gl;
       this.reader?.release();
-      this.reader = createDrawingBufferReader(gl, this.canvas, this.calibratedViewport, this.canvasArea);
-      this.hookAnimationFrame();
+      this.reader = this.createReader(gl, this.canvas, this.calibratedViewport, this.canvasArea);
       this.watchForContextLoss();
       return true;
     }
@@ -3817,31 +3826,38 @@ Frame saved to ${path}`, path);
       this.reader = void 0;
     }
     /**
-     * Reads pixels back immediately after the game has drawn.
+     * Reads pixels back after the game has drawn.
      *
      * A WebGL drawing buffer is cleared once it has been composited, so a read at
      * an arbitrary moment comes back blank or stale. The only reliable window is
-     * inside the animation-frame callback, straight after the game's own draw, so
-     * the hook below wraps `requestAnimationFrame` and the read happens there.
+     * inside an animation frame, after the game's own draw - see `requestRead`
+     * for how this one lands there.
      */
     async screenshot() {
       if (!this.gl) throw new Error("BrowserGameSession.open() must be called before use.");
       await this.waitUntilPainting();
       return new Promise((resolve, reject) => {
         const timer = window.setTimeout(() => {
-          this.pending = this.pending.filter((waiting) => waiting !== resolve);
-          reject(
-            new Error(
-              `The page stopped painting for ${FRAME_TIMEOUT_MS / 1e3}s. Chrome suspends animation frames for tabs that are hidden or fully covered, and the game cannot be read while it is not drawing.`
-            )
-          );
+          this.pending = this.pending.filter((other) => other !== waiting);
+          reject(new Error(this.describeMissingFrame(waiting)));
         }, FRAME_TIMEOUT_MS);
-        this.pending.push((frame) => {
-          window.clearTimeout(timer);
-          resolve(frame);
-        });
-        window.requestAnimationFrame(() => void 0);
+        const waiting = {
+          resolve: (frame) => {
+            window.clearTimeout(timer);
+            resolve(frame);
+          },
+          emptyFrames: 0
+        };
+        this.pending.push(waiting);
+        this.requestRead();
       });
+    }
+    describeMissingFrame(waiting) {
+      const seconds = FRAME_TIMEOUT_MS / 1e3;
+      if (waiting.emptyFrames === 0 || document.hidden) {
+        return `The page stopped painting for ${seconds}s. Chrome suspends animation frames for tabs that are hidden or fully covered, and the game cannot be read while it is not drawing.`;
+      }
+      return `The game's drawing buffer read back empty on all ${waiting.emptyFrames} frames painted in ${seconds}s. The page is drawing, but every read found the buffer already cleared, so there was no picture to recognise. That is a fault in how this script reads the page, not anything on the screen; press Logs to save a report of it.`;
     }
     /**
      * Waits for the tab to be visible, because a hidden one does not paint.
@@ -3925,25 +3941,55 @@ Frame saved to ${path}`, path);
     async saveScreenshot() {
       return void 0;
     }
-    hookAnimationFrame() {
-      if (this.hooked) return;
-      this.hooked = true;
-      const original = window.requestAnimationFrame.bind(window);
-      window.requestAnimationFrame = (callback) => original((time) => {
-        try {
-          callback(time);
-        } finally {
-          this.drainPendingReads();
-        }
+    /**
+     * Reads in an animation-frame callback of this script's own, never in one of
+     * the game's.
+     *
+     * The browser runs a frame's callbacks in the order they were requested, and
+     * a game requests its next frame from inside the current one. This request is
+     * made between frames - from a timer, a resolved promise, or the end of this
+     * script's own callback - so every callback the game has queued for the
+     * coming frame is already ahead of it, and the read lands after whatever the
+     * game draws there.
+     *
+     * It used to wrap `requestAnimationFrame` and read at the end of whichever of
+     * the game's callbacks ran first, which is after the draw only while the game
+     * draws in its first. A reported Edge 154 bundle (2026-09-30) is what that
+     * looks like when it does not: from one morning on, the first read on each
+     * page - the one made before any of the game's callbacks had been wrapped -
+     * found the screen 9 times out of 9, and the eight after each of them - 72
+     * in all - came back cleared and aborted the run as unrecognised.
+     * `npm run validate:inpage` already read in a callback of its own, which is
+     * the read that proved the in-page frame and the CDP screenshot are the same
+     * picture.
+     */
+    requestRead() {
+      if (this.readRequested) return;
+      this.readRequested = true;
+      window.requestAnimationFrame(() => {
+        this.readRequested = false;
+        this.readForWaiting();
       });
     }
-    /** Runs inside the animation frame, where the drawing buffer is still valid. */
-    drainPendingReads() {
+    /**
+     * Runs inside the animation frame, where the drawing buffer is still valid.
+     *
+     * A cleared buffer is read again on the next frame rather than handed over,
+     * because it is not a picture of anything: passed on, it reads as an
+     * unrecognised screen and aborts the run over a screen nobody saw. The bound
+     * on that is the caller's timeout, which then names the empty reads.
+     */
+    readForWaiting() {
       if (this.pending.length === 0 || !this.reader) return;
+      const frame = this.reader.read();
+      if (!frame) {
+        for (const waiting2 of this.pending) waiting2.emptyFrames += 1;
+        this.requestRead();
+        return;
+      }
       const waiting = this.pending;
       this.pending = [];
-      const frame = this.reader.read();
-      for (const resolve of waiting) resolve(frame);
+      for (const each of waiting) each.resolve(frame);
     }
     fireMouse(type, clientX, clientY, buttons) {
       this.canvas.dispatchEvent(
@@ -4673,7 +4719,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.14.2" : "dev";
+  var SCRIPT_VERSION = true ? "0.14.3" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
