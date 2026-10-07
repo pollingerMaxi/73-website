@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.14.3
+// @version      0.14.4
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -442,10 +442,11 @@
     const offsetY = region.top;
     const regionWidth = region.width;
     const regionHeight = region.height;
-    const scale = SEARCH_WIDTH / regionWidth;
+    const searchWidth = options.searchWidth ?? SEARCH_WIDTH;
+    const scale = searchWidth / regionWidth;
     const searchHeight = Math.max(1, Math.round(regionHeight * scale));
-    const { data } = downscaleRegion(frame, region, SEARCH_WIDTH, searchHeight);
-    const width = SEARCH_WIDTH;
+    const { data } = downscaleRegion(frame, region, searchWidth, searchHeight);
+    const width = searchWidth;
     const height = searchHeight;
     const matches = new Uint8Array(width * height);
     for (let index = 0; index < width * height; index += 1) {
@@ -669,9 +670,51 @@
     return Math.min(Math.max(value, 0), 1);
   }
 
-  // src/vision/casualties.ts
-  var ANDROID_CANVAS_ASPECT = 2.145;
+  // src/vision/picture.ts
+  var betweenLetterboxBands = {
+    heightIn: (frame) => measurePictureHeight(frame)
+  };
+  function fixedAspectCanvas(aspect) {
+    return { heightIn: (frame) => Math.min(frame.height, frame.width / aspect) };
+  }
   var BROWSER_CANVAS_ASPECT = 2.19;
+  var FULL_HEIGHT_MIN_ASPECT = 16 / 9;
+  function layoutHeightIn(picture, frame) {
+    return Math.min(picture.heightIn(frame), frame.width / FULL_HEIGHT_MIN_ASPECT);
+  }
+  var ANDROID_PICTURE = betweenLetterboxBands;
+  var BROWSER_PICTURE = fixedAspectCanvas(BROWSER_CANVAS_ASPECT);
+  var LETTERBOX_BLACK_MAX_CHANNEL = 4;
+  var LETTERBOX_MAX_LIT_SHARE = 0.5;
+  var RGBA_CHANNELS2 = 4;
+  function measurePictureHeight(frame) {
+    let top = 0;
+    while (top < frame.height && isLetterboxRow(frame, top)) top += 1;
+    if (top === frame.height) return 0;
+    let bottom = 0;
+    while (bottom < frame.height - top && isLetterboxRow(frame, frame.height - 1 - bottom)) bottom += 1;
+    return frame.height - top - bottom;
+  }
+  function isLetterboxRow(frame, y) {
+    const litAllowed = Math.floor(frame.width * LETTERBOX_MAX_LIT_SHARE);
+    let lit = 0;
+    const rowStart = y * frame.width * RGBA_CHANNELS2;
+    for (let x = 0; x < frame.width; x += 1) {
+      const offset = rowStart + x * RGBA_CHANNELS2;
+      const brightest = Math.max(
+        frame.data[offset] ?? 0,
+        frame.data[offset + 1] ?? 0,
+        frame.data[offset + 2] ?? 0
+      );
+      if (brightest > LETTERBOX_BLACK_MAX_CHANNEL) {
+        lit += 1;
+        if (lit > litAllowed) return false;
+      }
+    }
+    return true;
+  }
+
+  // src/vision/casualties.ts
   var MAX_TEAM_SIZE = 5;
   var SLOT_PITCH_IN_CANVAS_HEIGHTS = 0.17431;
   var BAR_LEFT_OFFSET_IN_CANVAS_HEIGHTS = -0.0603;
@@ -693,8 +736,17 @@
   var CARD_BAND_WINDOW_IN_PITCHES = 0.25;
   var CARD_BAND_MAX_HEIGHT_IN_PITCHES = 7.8;
   var MAX_FRAME_ASPECT = 2.27;
+  var MIN_PICTURE_ASPECT = 1.6;
+  var PITCH_UNIT_MIN_ASPECT = 16 / 9;
   var DialogGeometry = class {
-    /** The game picture's height, in rows of this frame. */
+    /** The game picture's own height, in rows of this frame. */
+    pictureRows;
+    /** The picture's width over its height, which is what {@link MIN_PICTURE_ASPECT} bounds. */
+    pictureAspect;
+    /**
+     * The height the dialog is laid out against, in rows of this frame: the picture's, or the width's
+     * share at 16:9 when the picture is narrower than that. See `layoutHeightIn` in `picture.ts`.
+     */
     canvasHeight;
     /** The lattice pitch, as a fraction of the frame's width - which is what a centre is measured in. */
     pitch;
@@ -718,10 +770,24 @@
      * of it in the browser than on the phone; the margins absorb that, which is why nothing has ever
      * failed on it. Putting it right means dividing all seven by about 4.6 and re-deriving every figure
      * their comments quote, which is a change of its own and not one to make while fixing the lattice.
+     *
+     * **A 16:9 frame takes that to 45%**, because what the unit carries is the frame's height over its
+     * width, squared: 0.3164 of a real pitch at 1920x1080 against 0.2175 at 3088x1440. That is not new
+     * with the full-height tablet - the letterboxed 16:9 fixture has the same frame shape and so the same
+     * unit, and both suites have letterboxed every result frame to 16:9 and 4:3 for months - but the
+     * tablet's dialogs are the first real 16:9 frames that are *read* through it rather than refused,
+     * and `casualties.test.ts` prints their margins. Still not the pass to fix it in.
+     *
+     * **A 16:10 frame would take it to 80%**, and that is the shape it is not allowed to follow: the
+     * aspect it carries is held at no narrower than {@link PITCH_UNIT_MIN_ASPECT}, so the 1280x800
+     * tablet is read in the 16:9 tablet's units. Written so that on every frame at or above that floor
+     * the second factor is exactly 1 and this is the expression it always was, to the last bit.
      */
     pitchY;
-    constructor(frame, canvasAspect) {
-      this.canvasHeight = Math.min(frame.height, frame.width / canvasAspect);
+    constructor(frame, picture) {
+      this.pictureRows = picture.heightIn(frame);
+      this.pictureAspect = this.pictureRows <= 0 ? Infinity : frame.width / this.pictureRows;
+      this.canvasHeight = layoutHeightIn(picture, frame);
       const perCanvasHeight = frame.width === 0 ? 0 : this.canvasHeight / frame.width;
       this.pitch = SLOT_PITCH_IN_CANVAS_HEIGHTS * perCanvasHeight;
       this.barLeftOffset = BAR_LEFT_OFFSET_IN_CANVAS_HEIGHTS * perCanvasHeight;
@@ -729,7 +795,9 @@
       this.wordProbeHalfWidth = WORD_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS * perCanvasHeight;
       this.spinnerHalfWidth = SPINNER_HALF_WIDTH_IN_CANVAS_HEIGHTS * perCanvasHeight;
       this.portraitProbeHalfWidth = PORTRAIT_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS * perCanvasHeight;
-      this.pitchY = frame.height === 0 ? 0 : this.pitch / (frame.width / frame.height);
+      const frameAspect = frame.height === 0 ? 0 : frame.width / frame.height;
+      const unitAspect = Math.max(frameAspect, PITCH_UNIT_MIN_ASPECT);
+      this.pitchY = frame.height === 0 ? 0 : this.pitch / unitAspect * (frameAspect / unitAspect);
     }
     /** Card centres for a team of `size`, left to right. */
     centresFor(size) {
@@ -746,7 +814,7 @@
   function reportsDeath(band) {
     return band.slots.some((slot) => slot.signal === "dead");
   }
-  function readBattleCasualties(frame, dialogBody, canvasAspect, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE) {
+  function readBattleCasualties(frame, dialogBody, picture, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE) {
     if (dialogBody.h <= 0 || dialogBody.w <= 0 || frame.width === 0 || frame.height === 0) {
       return unreadable("the dialog has no body between its banner and its buttons", 0);
     }
@@ -761,12 +829,23 @@
     const scan = new DialogScan(
       frame,
       dialogBody,
-      canvasAspect,
+      picture,
       void 0,
       void 0,
       cardBandMaxHeightInPitches,
       barMaxCoverage
     );
+    if (scan.geometry.canvasHeight < 1) {
+      return unreadable("the frame holds no game picture between its letterbox bands", 0);
+    }
+    if (scan.geometry.pictureAspect < MIN_PICTURE_ASPECT) {
+      const rows = Math.round(scan.geometry.pictureRows);
+      return refused(
+        "unsupportedFrameShape",
+        `the game's picture is ${frame.width}x${rows}, an aspect of ${scan.geometry.pictureAspect.toFixed(4)}, narrower than the ${MIN_PICTURE_ASPECT} this reading has ever been shown a capture of; below 16:9 the game lays the dialog out to the picture's width, which has been measured on a 1.6 tablet and on nothing narrower`,
+        0
+      );
+    }
     const refusals = [];
     let deathMarks = 0;
     for (let size = MAX_TEAM_SIZE; size >= 1; size -= 1) {
@@ -788,9 +867,9 @@
   }
   var DialogScan = class {
     /**
-     * @param canvasAspect how wide the game draws its picture relative to how tall, on the client this
-     *   frame came from - {@link ANDROID_CANVAS_ASPECT} or {@link BROWSER_CANVAS_ASPECT}. Third and
-     *   required, because it is a fact about the frame, while the two below are test knobs.
+     * @param picture where the game's picture sits in a frame from the client this one came from -
+     *   `ANDROID_PICTURE` or `BROWSER_PICTURE` in `picture.ts`. Third and required, because it is a fact
+     *   about the frame, while the ones below are test knobs.
      * @param bandBridgeInPitches defaults to the shipped {@link BAND_BRIDGE_IN_PITCHES}. A parameter
      *   only so a test can walk it down and watch what breaks, which is how that constant was measured
      *   on the Kotlin side in the first place - and the one death in the corpus turns out to depend on
@@ -808,13 +887,13 @@
      *   a finished `someDead` on a frame where nobody died, and a rule whose absence cannot be
      *   demonstrated is a rule nobody can check.
      */
-    constructor(frame, body, canvasAspect, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE) {
+    constructor(frame, body, picture, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE) {
       this.frame = frame;
       this.body = body;
       this.cardBandMaxGapInPitches = cardBandMaxGapInPitches;
       this.cardBandMaxHeightInPitches = cardBandMaxHeightInPitches;
       this.barMaxCoverage = barMaxCoverage;
-      this.geometry = new DialogGeometry(frame, canvasAspect);
+      this.geometry = new DialogGeometry(frame, picture);
       this.pitchY = this.geometry.pitchY;
       this.rowsPerPitch = this.pitchY * frame.height;
       this.bandBridgeRows = Math.max(1, Math.round(bandBridgeInPitches * this.rowsPerPitch));
@@ -1287,17 +1366,20 @@
       this.config = config;
     }
     /**
-     * How wide the game draws its own picture, relative to how tall, on the client this config drives.
+     * Where the game's own picture sits in a frame from the client this config drives.
      *
-     * The casualty lattice is a share of that picture's height rather than of the frame's, so this is
-     * the one thing the reading cannot work out for itself: a browser frame carries the page's header
-     * above the canvas and a phone frame is the phone's screen. Keyed off the backend rather than off
-     * `canvasArea`, which describes the same fact from the other end but only for the in-page path.
+     * The casualty lattice and the empty-slot chevron are both sized by that picture's height rather
+     * than by the frame's, so this is the one thing those readings cannot work out for themselves
+     * without being told what kind of frame they hold: a browser frame carries the page's header above
+     * the canvas, and a phone frame is the phone's screen, in which the game may or may not letterbox.
+     * Keyed off the backend rather than off `canvasArea`, which describes the browser's half from the
+     * other end but only for the in-page path.
      *
-     * See `ANDROID_CANVAS_ASPECT`, which carries both measurements.
+     * Public because `findEmptyTeamSlots` needs the same answer and `DungeonRunner` already holds this
+     * detector; two places choosing the picture by backend could disagree. See `picture.ts`.
      */
-    get canvasAspect() {
-      return this.config.session.backend === "chrome" ? BROWSER_CANVAS_ASPECT : ANDROID_CANVAS_ASPECT;
+    get picture() {
+      return this.config.session.backend === "chrome" ? BROWSER_PICTURE : ANDROID_PICTURE;
     }
     async detect(screenshot) {
       const [actionButtons, shopButtons, activateOrbs] = await Promise.all([
@@ -1349,15 +1431,11 @@
         );
         const foreign = await bannerForeignFraction(screenshot);
         const occluded = foreign >= BANNER_OCCLUDED_MIN;
-        const casualties = readBattleCasualties(
-          screenshot,
-          dialogBodyAbove(ok),
-          this.canvasAspect
-        );
+        const casualties = readBattleCasualties(screenshot, dialogBodyAbove(ok), this.picture);
         const outcome = readOutcome(gold >= VICTORY_GOLD_MIN, occluded, casualties);
         return {
           state: "battleResult",
-          diagnostics: `${diagnostics} dialogBlue=${blues}${faded ? " faded" : ""} bannerGold=${gold.toFixed(3)} bannerForeign=${foreign.toFixed(3)} ${outcome.diagnostics} casualties=${casualties.verdict} (${casualties.diagnostics}) scanned=${casualties.scannedFraction.toFixed(3)}`,
+          diagnostics: `${diagnostics} dialogBlue=${blues}${faded ? " faded" : ""} bannerGold=${gold.toFixed(3)} bannerForeign=${foreign.toFixed(3)} ${outcome.diagnostics} casualties=${casualties.verdict} (${casualties.diagnostics}) scanned=${casualties.scannedFraction.toFixed(3)} picture=${Math.round(this.picture.heightIn(screenshot))}`,
           actionPoint: ok.center,
           actionButtons,
           ...outcome.won === void 0 ? {} : { battleWon: outcome.won },
@@ -1655,6 +1733,7 @@
   var TICK_MIN_PIXELS = 80;
   var TICK_MIN_DENSITY = 0.19;
   var TICK_MAX_ASPECT = 0.95;
+  var TICK_GLYPH_ASPECT = 0.86;
   var BAR_TROUGH_MAX_VALUE = 0.145;
   var MIN_BAR_WIDTH = 0.015;
   var STRIP_SEARCH_TOP = 0.6;
@@ -1792,17 +1871,34 @@
     for (let index = 1; index < edges.length; index += 1) gaps.push(edges[index] - edges[index - 1]);
     if (gaps.length === 0) return void 0;
     const smallest = Math.min(...gaps);
-    const pitch = median(gaps.filter((gap) => gap <= smallest * 1.5));
-    if (pitch <= tolerance) return void 0;
+    const coarsePitch = median(gaps.filter((gap) => gap <= smallest * 1.5));
+    if (coarsePitch <= tolerance) return void 0;
     let best;
-    for (const origin of edges) {
+    for (const origin2 of edges) {
       const matched = sorted.filter(
-        (run) => Math.abs(run.start - (origin + Math.round((run.start - origin) / pitch) * pitch)) <= tolerance
+        (run) => Math.abs(
+          run.start - (origin2 + Math.round((run.start - origin2) / coarsePitch) * coarsePitch)
+        ) <= tolerance
       );
-      if (!best || matched.length > best.runs.length) best = { origin, runs: matched };
+      if (!best || matched.length > best.runs.length) best = { origin: origin2, runs: matched };
     }
     if (!best || best.runs.length < MIN_BARS) return void 0;
-    return { pitch, origin: Math.min(...best.runs.map((run) => run.start)), runs: best.runs };
+    const origin = Math.min(...best.runs.map((run) => run.start));
+    return { pitch: refinedPitch(best.runs, origin, coarsePitch), origin, runs: best.runs };
+  }
+  function refinedPitch(runs, origin, coarsePitch) {
+    const indices = runs.map((run) => Math.round((run.start - origin) / coarsePitch));
+    const starts = runs.map((run) => run.start);
+    const meanIndex = indices.reduce((sum, index) => sum + index, 0) / indices.length;
+    const meanStart = starts.reduce((sum, start) => sum + start, 0) / starts.length;
+    let covariance = 0;
+    let spread = 0;
+    for (let bar = 0; bar < runs.length; bar += 1) {
+      const offset = (indices[bar] ?? 0) - meanIndex;
+      covariance += offset * ((starts[bar] ?? 0) - meanStart);
+      spread += offset * offset;
+    }
+    return spread === 0 ? coarsePitch : covariance / spread;
   }
   var BARS_ARE_THE_ANCHOR = "The strip is anchored on the titans' health bars, and a dead titan draws none at all - so a roster with fewer than three living titans in it cannot be measured, and the configured geometry has to stand in.";
   var ARTWORK_HAS_NOT_ARRIVED = "Cards are counted on their artwork, because a dead titan draws no bar to count instead - and until the portraits load the game fills every tile with a flat element colour, which has nothing to count. This is a screen still assembling, not a screen without a roster; a frame in this state is also the one that makes portrait matching quietly wrong, so it is refused rather than measured.";
@@ -1949,21 +2045,18 @@
       if (!blob) continue;
       onBlob?.(index, blob);
       if (!blob.isTick) continue;
-      found.push({
-        dx: (blob.minX + blob.maxX) / 2 - centre,
-        centreY: (blob.minY + blob.maxY) / 2,
-        width: blob.width,
-        height: blob.height,
-        top: blob.minY
-      });
+      found.push({ dx: (blob.minX + blob.maxX) / 2 - centre, width: blob.width, top: blob.minY });
     }
     if (found.length === 0) return void 0;
+    const width = median(found.map((tick) => tick.width));
+    const top = median(found.map((tick) => tick.top));
+    const height = width * TICK_GLYPH_ASPECT;
     return {
       dx: median(found.map((tick) => tick.dx)),
-      centreY: median(found.map((tick) => tick.centreY)),
-      width: median(found.map((tick) => tick.width)),
-      height: median(found.map((tick) => tick.height)),
-      top: median(found.map((tick) => tick.top))
+      centreY: top - 0.5 + height / 2,
+      width,
+      height,
+      top
     };
   }
   function findTileBand(pixels, healthTop, background, cardCentres, frameWidth, windowHeight) {
@@ -2041,9 +2134,11 @@
       const configured = this.config.coordinates.teamSelect.roster;
       if (!this.attempted) {
         this.attempted = true;
-        const measured = (await deriveRosterGeometry(screenshot)).geometry;
+        const derivation = await deriveRosterGeometry(screenshot);
+        const measured = derivation.geometry;
         this.derived = measured && { ...measured, selectedTickShape: configured.selectedTickShape };
         if (this.derived) this.reportDrift(this.derived, configured);
+        else this.reportNothingToMeasure(derivation.diagnostics);
       }
       if (this.config.calibrated) {
         this.resolved = configured;
@@ -2055,6 +2150,30 @@
         return this.resolved;
       }
       return void 0;
+    }
+    /**
+     * Says so when there was no strip on the frame to measure.
+     *
+     * On a calibrated config the derivation runs for the drift report alone, so a refusal changes
+     * nothing - and until this line existed it also said nothing, which is the half that was missing.
+     * It is the only warning this client has that the screen is not laid out the way the configured
+     * numbers were measured on, and without it a run goes on reading every card through those numbers
+     * in silence.
+     *
+     * A 0.14.0 user reported the state it exists for on 2026-09-18: a Mixed room declined for an
+     * understrength team with five titans on the field, 0 of 5 cards reading as ticked, and the roster
+     * toggled to the multi-row grid view rather than the bottom strip. Nothing in that run's log named
+     * the strip at all. {@link unreadableStripRemedy} is the same finding said where the run stops.
+     *
+     * The phone's `RosterGeometrySource.fallBackToConfig` has had this line for longer and the wording
+     * follows it, so that a triager holding a bundle from each client reads one sentence about one
+     * state. That includes its rule that a failure line must not contain the phrase the success line
+     * uses: both are read back out of a log, by eye and by tests, and "could not be measured from this
+     * screen" contains "measured from this screen".
+     */
+    reportNothingToMeasure(diagnostics) {
+      const fallback = this.config.calibrated ? "so the configured numbers are standing in. They were measured on one layout, and a screen laid out another way is not read correctly through them." : "and there are no calibrated numbers to fall back on.";
+      this.log(`No roster strip could be found on this screen, ${fallback} ${diagnostics}`);
     }
     /**
      * Reports how far the measurement sits from the configured numbers.
@@ -2173,10 +2292,15 @@ ${this.message}`;
   // src/vision/teamSlots.ts
   var MARKER_GOLD = { hueMin: 25, hueMax: 55, minSaturation: 0.35, minValue: 0.4 };
   var ARENA_SEARCH_AREA = { x: 0.04, y: 0.25, w: 0.42, h: 0.3 };
-  async function findEmptyTeamSlots(screenshot, slotCenters, shape) {
+  var MARKER_BOUNDS_WIDEST_GLYPH_PICTURE_ASPECT = 3088 / 1440;
+  var MARKER_BOUNDS_NARROWEST_GLYPH_PICTURE_ASPECT = 2.19;
+  async function findEmptyTeamSlots(screenshot, slotCenters, shape, picture) {
+    const searchWidth = markerSearchWidth(screenshot, picture);
+    if (searchWidth === void 0) return [];
     const blobs = await findColorBlobs(screenshot, MARKER_GOLD, {
       minPixels: shape.minPixels,
-      searchArea: ARENA_SEARCH_AREA
+      searchArea: ARENA_SEARCH_AREA,
+      searchWidth
     });
     const markers = blobs.filter(
       (blob) => blob.pixelCount <= shape.maxPixels && blob.aspect >= shape.minAspect && blob.aspect <= shape.maxAspect && blob.fillRatio >= shape.minFillRatio && blob.fillRatio <= shape.maxFillRatio
@@ -2193,6 +2317,16 @@ ${this.message}`;
       }
     }
     return empty;
+  }
+  function markerSearchWidth(screenshot, picture) {
+    const layoutHeight = layoutHeightIn(picture, screenshot);
+    if (layoutHeight < 1) return void 0;
+    const pictureAspect = screenshot.width / layoutHeight;
+    const measuredAspect = Math.min(
+      Math.max(pictureAspect, MARKER_BOUNDS_WIDEST_GLYPH_PICTURE_ASPECT),
+      MARKER_BOUNDS_NARROWEST_GLYPH_PICTURE_ASPECT
+    );
+    return Math.round(SEARCH_WIDTH * pictureAspect / measuredAspect);
   }
   function goldCoverage(screenshot, center, box) {
     const pixels = cropToRgb(screenshot, {
@@ -2223,6 +2357,7 @@ ${this.message}`;
   var PANEL_AREA_RIGHT_EDGE = 0.72;
   var BATTLE_ATTEMPTS_WITHOUT_DELAY = 200;
   var MAX_CHAINED_SAVE_POINT_DIALOGS = 2;
+  var SAVE_POINT_COLLECT_MIN_Y = 0.6;
   var GATE_SETTLE_TOLERANCE = 0.01;
   var EMPTY_SLOT_CONFIRMATIONS = 3;
   var UNDERSTRENGTH_CONFIRMATIONS = 4;
@@ -2250,9 +2385,9 @@ ${this.message}`;
     if (indexes.length === 1) return `card ${indexes[0]}`;
     return `cards ${indexes.slice(0, -1).join(", ")} and ${indexes[indexes.length - 1]}`;
   }
+  var FILL_THE_TEAM = "Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.";
   function shortTeamRemedy(strip, requiredTitans, stripShowsEveryone) {
-    const fillIt = "Fill the team and run again, or set strategy.team.allowIncompleteTeam if that is what you meant.";
-    if (!strip || strip.dead.length === 0) return fillIt;
+    if (!strip || strip.dead.length === 0) return FILL_THE_TEAM;
     const { cards, dead } = strip;
     const living = cards - dead.length;
     const died = `The strip says what happened: of the ${cards} cards it is showing, counting from the left, ${namesCards(dead)} ${dead.length === 1 ? "has" : "have"} no health bar left - which is how this game draws a titan that died. The game drops a dead titan from the team and puts nobody in its place.`;
@@ -2266,9 +2401,15 @@ ${this.message}`;
     }
     return `${died} ${whatIsLeft} Setting strategy.team.allowIncompleteTeam would fight every remaining room a titan short rather than fix that.`;
   }
+  function unreadableStripRemedy(why) {
+    return `No roster strip could be found on this frame at all - ${whyTheStripWasRefused(why)}, says the reading - so the tick count above was read through card positions that nothing on this screen confirmed. Both reasons the reading knows are about a strip that is where it belongs and cannot be read, so a roster in any other view arrives wearing one of them: if this roster is in the multi-row grid rather than the bottom strip, that is the thing to fix first, because every card position this run uses was measured on the strip. It does not follow that the empty slot above is wrong - that is read off the arena, not off the strip. ` + FILL_THE_TEAM;
+  }
   var STILL_ASSEMBLING_PHRASE = "still assembling";
   function stripRefusalFrom(diagnostics) {
     return diagnostics.includes(STILL_ASSEMBLING_PHRASE) ? "stillAssembling" : "tooFewLivingTitans";
+  }
+  function whyTheStripWasRefused(why) {
+    return why === "stillAssembling" ? "the screen is still being drawn" : "too few titans are still alive to draw the bars it is measured from";
   }
   function teamHealthLine(fielded, benched) {
     const readings = fielded.map(
@@ -2278,7 +2419,7 @@ ${this.message}`;
   }
   function describeBenchedCards(benched) {
     if (!benched.measured) {
-      const because = benched.why === "stillAssembling" ? "the screen is still being drawn" : "too few titans are still alive to draw the bars it is measured from";
+      const because = whyTheStripWasRefused(benched.why);
       return ` (the strip could not be measured on this frame - ${because} - so no card outside the team is called dead)`;
     }
     const { dead } = benched;
@@ -2706,13 +2847,13 @@ ${this.message}`;
      * not exist. Measured on bundle A's battle 27, that is exactly what happens: cards 6, 7, 8 and 9
      * are named as casualties on a six-card strip.
      *
-     * The sentence itself is {@link shortTeamRemedy}'s, and the split is not tidiness. No capture in
-     * this client's corpus can reach the death branch end to end: the only team select with a dead card
-     * on it is `..._live_teamSelect_deadMoloch.png`, and sweeping the shipped marker reading over every
-     * centre of that whole frame at 0.01 intervals finds nowhere at all that scores as a chevron - which
-     * is precisely why the settle pair uses it as its *no marker* half. So a run cannot be made to
-     * refuse on the one frame that has a death on it, and the wording would otherwise ship with nothing
-     * exercising it. Measuring here and composing there lets the three sentences be pinned directly.
+     * The sentences themselves are {@link shortTeamRemedy}'s and {@link unreadableStripRemedy}'s, and
+     * the split is not tidiness. No capture in this client's corpus can reach the death branch end to
+     * end: the only team select with a dead card on it is `..._live_teamSelect_deadMoloch.png`, and
+     * sweeping the shipped marker reading over every centre of that whole frame at 0.01 intervals finds
+     * nowhere at all that scores as a chevron - which is precisely why the settle pair uses it as its
+     * *no marker* half. So a run cannot be made to refuse on the one frame that has a death on it, and
+     * the wording would otherwise ship with nothing exercising it. Measuring here and composing there lets the three sentences be pinned directly.
      * The phone has no such gap; its `TeamSettleTest` reaches the branch with a real fixture.
      *
      * @param frame the frame the settled tick count was read from - the same frame {@link endRun} is
@@ -2720,8 +2861,9 @@ ${this.message}`;
      */
     async remedyForAShortTeam(frame, requiredTitans) {
       if (!frame) return shortTeamRemedy(void 0, requiredTitans, false);
-      const geometry = (await deriveRosterGeometry(frame)).geometry;
-      if (!geometry) return shortTeamRemedy(void 0, requiredTitans, false);
+      const derivation = await deriveRosterGeometry(frame);
+      const geometry = derivation.geometry;
+      if (!geometry) return unreadableStripRemedy(stripRefusalFrom(derivation.diagnostics));
       const cards = geometry.visibleCardCount;
       const dead = [];
       for (let index = 0; index < cards; index += 1) {
@@ -2997,7 +3139,7 @@ ${this.message}`;
      */
     async emptySlotsAgreedAcrossFrames(inHand) {
       const { centers, marker } = this.config.coordinates.teamSelect.emptySlots;
-      const readSlots = (frame) => findEmptyTeamSlots(frame, centers, marker);
+      const readSlots = (frame) => findEmptyTeamSlots(frame, centers, marker, this.detector.picture);
       const first = await readSlots(inHand);
       if (first.length === 0) return [];
       const votes = /* @__PURE__ */ new Map();
@@ -3114,11 +3256,9 @@ ${this.message}`;
      * twice more is bounded rather than open-ended.
      */
     async collectSavePointLoot() {
-      const collect = await this.retry(async () => {
-        const shot = await this.session.screenshot();
-        const buttons = await findActionButtons(shot);
-        return buttons.find((blob) => blob.center.y > 0.6);
-      });
+      const refusalsSaid = /* @__PURE__ */ new Set();
+      const findCollect = () => this.findSavePointCollect(refusalsSaid);
+      const collect = await this.retry(findCollect);
       if (!collect) {
         this.log("No Collect dialog appeared; waiting once more in case it is late, not absent.");
       } else {
@@ -3127,11 +3267,7 @@ ${this.message}`;
       }
       let collected = collect ? 1 : 0;
       for (let extra = 0; extra < MAX_CHAINED_SAVE_POINT_DIALOGS; extra += 1) {
-        const another = await this.retry(async () => {
-          const shot = await this.session.screenshot();
-          const buttons = await findActionButtons(shot);
-          return buttons.find((blob) => blob.center.y > 0.6);
-        });
+        const another = await this.retry(findCollect);
         if (!another) break;
         this.log(
           collected === 0 ? "  the Collect dialog arrived late after all; collecting it." : "Another save-point dialog; collecting that too."
@@ -3144,6 +3280,42 @@ ${this.message}`;
         return state === "savePoint" ? void 0 : true;
       });
       if (!cleared) this.log("  save point still on screen after collecting; continuing anyway.");
+    }
+    /**
+     * The Collect button of a save point's dialog, if that is what is on screen.
+     *
+     * The dialog is a screen the detector has no name for, with one green button below the middle:
+     * (0.634, 0.686) on the two phone captures of it, (0.631-0.633, 0.702-0.708) on six browser
+     * working captures, and all eight read `unknown`. A screen the detector *does* name is not a
+     * dialog, whatever green it has, and its buttons do things. This search used to take the first
+     * green button below 0.6 off any frame at all, and on a 0.14.3 bundle of 2026-10-06 that was a
+     * battle choice's left door and then team select's To battle!, which started a fight by hand,
+     * past the team check. Of the 205 browser frames on disk, every battle choice (29), team select
+     * (54) and result dialog (26) has such a button, and none of them reads `unknown`.
+     *
+     * Exactly one button, as well, because two is a choice and the dialog offers none. That is as
+     * far as this goes: 11 of those 205 frames read `unknown` with one button below 0.6, and five
+     * of them have it nowhere near the dialog's, between (0.50, 0.68) and (0.75, 0.93), so are some
+     * other screen. Telling those apart needs the dialog named, which one frame per client is too
+     * little to do.
+     *
+     * A refusal is said once per screen per save point, so a run that met one shows it without the
+     * log repeating it on every look.
+     */
+    async findSavePointCollect(refusalsSaid) {
+      const shot = await this.session.screenshot();
+      const { state } = await this.detector.detect(shot);
+      const candidates = (await findActionButtons(shot)).filter(
+        (blob) => blob.center.y > SAVE_POINT_COLLECT_MIN_Y
+      );
+      if (state === "unknown" && candidates.length === 1) return candidates[0];
+      if (state !== "unknown" && candidates.length > 0 && !refusalsSaid.has(state)) {
+        refusalsSaid.add(state);
+        this.log(
+          `  waiting for the save point's Collect dialog, but the screen reads as ${state}; not clicking any of its buttons.`
+        );
+      }
+      return void 0;
     }
     /**
      * Waits for the battle to reach a screen the runner can act on.
@@ -3246,7 +3418,7 @@ ${this.message}`;
             // named owner and a next step, which is exactly what an abort is for.
             case "unsupportedFrameShape":
               throw await this.abort(
-                `This screen is a shape the casualty reading has never been measured on, so the result was refused rather than guessed at: ${casualties.diagnostics}. The team lattice is placed from the height of the game's own picture, and ${MAX_FRAME_ASPECT} is the ceiling on shapes that reading has been measured on - the widest real capture here is 2.2222 - so past it nothing has measured where the cards are drawn, and the reading refuses rather than answer "nobody died" about a battle that may have killed a titan. Looking again cannot help - a shape belongs to the screen and not to the moment, so every dialog this run meets will be the same - which is why nothing was clicked, nothing was waited out, and the dialog is still on screen. What would fix it is a result-dialog capture from a screen this shape: the gate is there because no such frame exists in either corpus, not because the dialog is unreadable in principle, so send one in and the reading can be measured on it. Until then, either give the game a screen nearer 2:1 - this run is reading ${this.session.describe()} - or turn safety.stopWhenTitanDies off to have results collected unread.`
+                `This screen is a shape the casualty reading has never been measured on, so the result was refused rather than guessed at: ${casualties.diagnostics}. The team lattice is placed from the height of the game's own picture, and ${MIN_PICTURE_ASPECT} to ${MAX_FRAME_ASPECT} is the range of shapes that reading has been measured on - the real captures here run from a 1.6 tablet to a 2.2222 phone - so outside it nothing has measured where the cards are drawn, and the reading refuses rather than answer "nobody died" about a battle that may have killed a titan. Looking again cannot help - a shape belongs to the screen and not to the moment, so every dialog this run meets will be the same - which is why nothing was clicked, nothing was waited out, and the dialog is still on screen. What would fix it is a result-dialog capture from a screen this shape: the gate is there because no such frame exists in either corpus, not because the dialog is unreadable in principle, so send one in and the reading can be measured on it. Until then, either give the game a screen nearer 2:1 - this run is reading ${this.session.describe()} - or turn safety.stopWhenTitanDies off to have results collected unread.`
               );
             // The one verdict a second look can genuinely change, which is why it is the only one that
             // falls through to the settle below.
@@ -3772,6 +3944,7 @@ Frame saved to ${path}`, path);
 
   // src/session/BrowserGameSession.ts
   var FRAME_TIMEOUT_MS = 2e4;
+  var NEXT_TASK_MS = 0;
   var BrowserGameSession = class {
     constructor(canvas, calibratedViewport, canvasArea, betweenClicksMs, notice = () => void 0, createReader = createDrawingBufferReader) {
       this.canvas = canvas;
@@ -3947,10 +4120,11 @@ Frame saved to ${path}`, path);
      *
      * The browser runs a frame's callbacks in the order they were requested, and
      * a game requests its next frame from inside the current one. This request is
-     * made between frames - from a timer, a resolved promise, or the end of this
-     * script's own callback - so every callback the game has queued for the
-     * coming frame is already ahead of it, and the read lands after whatever the
-     * game draws there.
+     * made between frames - from a timer, or from a promise the run resolves after
+     * a read that landed behind the draw - so every callback the game has queued
+     * for the coming frame is already ahead of it, and the read lands after
+     * whatever the game draws there. A read that landed ahead of the draw asks
+     * for the next one differently; see `requestReadAfterThisFrame`.
      *
      * It used to wrap `requestAnimationFrame` and read at the end of whichever of
      * the game's callbacks ran first, which is after the draw only while the game
@@ -3974,22 +4148,47 @@ Frame saved to ${path}`, path);
     /**
      * Runs inside the animation frame, where the drawing buffer is still valid.
      *
-     * A cleared buffer is read again on the next frame rather than handed over,
-     * because it is not a picture of anything: passed on, it reads as an
-     * unrecognised screen and aborts the run over a screen nobody saw. The bound
-     * on that is the caller's timeout, which then names the empty reads.
+     * A cleared buffer is read again rather than handed over, because it is not
+     * a picture of anything: passed on, it reads as an unrecognised screen and
+     * aborts the run over a screen nobody saw. The bound on that is the caller's
+     * timeout, which then names the empty reads.
      */
     readForWaiting() {
       if (this.pending.length === 0 || !this.reader) return;
       const frame = this.reader.read();
       if (!frame) {
         for (const waiting2 of this.pending) waiting2.emptyFrames += 1;
-        this.requestRead();
+        this.requestReadAfterThisFrame();
         return;
       }
       const waiting = this.pending;
       this.pending = [];
       for (const each of waiting) each.resolve(frame);
+    }
+    /**
+     * Asks for the next read from a task, which runs once this frame is over.
+     *
+     * Never from inside the frame. A read comes back cleared when this script's
+     * callback ran ahead of the game's draw, and the game queues its next frame
+     * later in that same frame, so a request made in here is queued ahead of
+     * the game's again - and so is one made from a promise, whose continuation
+     * also runs before the game's callback. One frame out of order then stays
+     * out of order for every frame after it. By the time a task runs the game
+     * has queued its next frame, so the read is back behind the draw on the
+     * frame after.
+     *
+     * It did request from in here in 0.14.3, which counted the end of this
+     * script's own callback as between frames. That is true only when the
+     * callback was already behind the draw. A reported Chrome 154 bundle
+     * (0.14.3, 2026-10-06) is what it cost when it was not: 3 of 276 clicks into
+     * team select ended the run 20s later on 1131, 1103 and 1078 frames read
+     * empty in a row, while the player watched the page paint. How the callback
+     * got ahead is not in the bundle - a game loop that stops for a screen
+     * change and is restarted from outside a frame would do it - and the fix
+     * does not depend on which.
+     */
+    requestReadAfterThisFrame() {
+      window.setTimeout(() => this.requestRead(), NEXT_TASK_MS);
     }
     fireMouse(type, clientX, clientY, buttons) {
       this.canvas.dispatchEvent(
@@ -4337,6 +4536,7 @@ Frame saved to ${path}`, path);
   var STORAGE_KEY = "hwa-dungeon.journal";
   var MAX_JOURNAL_LINES = 5e3;
   var PERSIST_DELAY_MS = 1e3;
+  var MILLISECOND_DIGITS = 3;
   function openRunLog(version) {
     const lines = readStored();
     const carried = lines.length;
@@ -4379,8 +4579,9 @@ Frame saved to ${path}`, path);
   }
   function timeOfDay() {
     const now = /* @__PURE__ */ new Date();
-    const pad = (value) => String(value).padStart(2, "0");
-    return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const pad = (value, width = 2) => String(value).padStart(width, "0");
+    const time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    return `${time}.${pad(now.getMilliseconds(), MILLISECOND_DIGITS)}`;
   }
   function readStored() {
     try {
@@ -4719,7 +4920,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.14.3" : "dev";
+  var SCRIPT_VERSION = true ? "0.14.4" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
