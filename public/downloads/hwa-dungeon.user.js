@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.14.4
+// @version      0.14.5
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -722,11 +722,20 @@
   var SPINNER_HALF_WIDTH_IN_CANVAS_HEIGHTS = 0.039;
   var WORD_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS = 0.0129;
   var BAR_GREEN = { hueMin: 45, hueMax: 125, minSaturation: 0.65 };
-  var DEAD_RED = { hueBelow: 15, hueAbove: 345, minSaturation: 0.6 };
+  var DEAD_RED_MIN_CHROMA = 0.045;
+  var DEAD_RED = {
+    hueBelow: 15,
+    hueAbove: 345,
+    minSaturation: 0.6,
+    minChroma: DEAD_RED_MIN_CHROMA
+  };
   var SIGNAL_MIN_COVERAGE = 0.15;
   var BAR_MAX_COVERAGE = 0.79;
   var STATUS_ROW_MIN_HEIGHT_IN_PITCHES = 0.22;
   var BAND_BRIDGE_IN_PITCHES = 0.3;
+  var STRIPE_PITCH_MIN_IN_CANVAS_HEIGHTS = 95e-4;
+  var STRIPE_PITCH_MAX_IN_CANVAS_HEIGHTS = 0.0145;
+  var STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS = 48e-4;
   var PORTRAIT_PROBE_TOP_IN_PITCHES = 3.2;
   var PORTRAIT_PROBE_BOTTOM_IN_PITCHES = 1.1;
   var PORTRAIT_PROBE_HALF_WIDTH_IN_CANVAS_HEIGHTS = 0.0429;
@@ -814,7 +823,7 @@
   function reportsDeath(band) {
     return band.slots.some((slot) => slot.signal === "dead");
   }
-  function readBattleCasualties(frame, dialogBody, picture, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE) {
+  function readBattleCasualties(frame, dialogBody, picture, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE, stripeMinHeightInCanvasHeights = STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS) {
     if (dialogBody.h <= 0 || dialogBody.w <= 0 || frame.width === 0 || frame.height === 0) {
       return unreadable("the dialog has no body between its banner and its buttons", 0);
     }
@@ -833,7 +842,8 @@
       void 0,
       void 0,
       cardBandMaxHeightInPitches,
-      barMaxCoverage
+      barMaxCoverage,
+      stripeMinHeightInCanvasHeights
     );
     if (scan.geometry.canvasHeight < 1) {
       return unreadable("the frame holds no game picture between its letterbox bands", 0);
@@ -886,8 +896,12 @@
      *   ceiling off. The same knob for the same reason as the three above: what this one holds out is
      *   a finished `someDead` on a frame where nobody died, and a rule whose absence cannot be
      *   demonstrated is a rule nobody can check.
+     * @param stripeMinHeightInCanvasHeights defaults to the shipped
+     *   {@link STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS}, and `Infinity` turns the stripe completion off - no
+     *   run is that tall - which is how both suites show that it, and nothing else, is what reads the
+     *   2026-10-07 abort frame.
      */
-    constructor(frame, body, picture, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE) {
+    constructor(frame, body, picture, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE, stripeMinHeightInCanvasHeights = STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS) {
       this.frame = frame;
       this.body = body;
       this.cardBandMaxGapInPitches = cardBandMaxGapInPitches;
@@ -897,12 +911,19 @@
       this.pitchY = this.geometry.pitchY;
       this.rowsPerPitch = this.pitchY * frame.height;
       this.bandBridgeRows = Math.max(1, Math.round(bandBridgeInPitches * this.rowsPerPitch));
+      const canvasRows = this.geometry.canvasHeight;
+      this.stripePitchMinRows = Math.max(1, Math.floor(STRIPE_PITCH_MIN_IN_CANVAS_HEIGHTS * canvasRows));
+      this.stripePitchMaxRows = Math.ceil(STRIPE_PITCH_MAX_IN_CANVAS_HEIGHTS * canvasRows);
+      this.stripeMinRows = Math.max(2, Math.ceil(stripeMinHeightInCanvasHeights * canvasRows));
     }
     /** Where this frame's lattice and windows fall. Public so a test can print what it probed. */
     geometry;
     pitchY;
     rowsPerPitch;
     bandBridgeRows;
+    stripePitchMinRows;
+    stripePitchMaxRows;
+    stripeMinRows;
     probes = /* @__PURE__ */ new Map();
     cardBands = /* @__PURE__ */ new Map();
     bands = /* @__PURE__ */ new Map();
@@ -981,37 +1002,68 @@
       const columns = centres.map((centre) => this.probeColumn(centre));
       const cards = this.cardBandFor(size);
       const rowCount = columns[0]?.readings.length ?? 0;
+      const runs = agreeingRuns(columns, rowCount, this.bandBridgeRows);
       const bands = [];
-      let start = -1;
-      let lastAgreeing = -1;
-      for (let row = 0; row <= rowCount; row += 1) {
-        const agrees = row < rowCount && columns.every((column) => isDecisive(column.readings[row]?.signal));
-        if (agrees) {
-          if (start < 0) start = row;
-          lastAgreeing = row;
-          continue;
-        }
-        if (start < 0) continue;
-        if (row < rowCount && row - lastAgreeing <= this.bandBridgeRows) continue;
-        const top = this.toFrameY(start, rowCount);
-        const band = {
-          top,
-          bottom: this.toFrameY(lastAgreeing, rowCount),
-          rows: lastAgreeing - start + 1,
-          heightInPitches: (lastAgreeing - start + 1) / this.rowsPerPitch,
-          pitchesBelowTheCards: cards === void 0 ? Number.POSITIVE_INFINITY : (top - cards.bottom) / this.pitchY,
-          slots: columns.map(
-            (column, slot) => summarise(column.readings, start, lastAgreeing, centres[slot] ?? 0)
-          )
-        };
-        start = -1;
+      runs.forEach((run, index) => {
+        const completed = this.withItsOtherStripe(run, columns, cards, rowCount, {
+          above: runs[index - 1]?.end ?? -1,
+          below: runs[index + 1]?.start ?? rowCount
+        });
+        const band = this.statusRowOver(completed, columns, centres, cards, rowCount);
         if (band.pitchesBelowTheCards > this.cardBandMaxGapInPitches) {
           this.setAside.push(band.pitchesBelowTheCards);
-          continue;
+          return;
         }
         bands.push(band);
-      }
+      });
       return bands;
+    }
+    /** The status row a run of rows makes on this lattice, summarised card by card. */
+    statusRowOver(run, columns, centres, cards, rowCount) {
+      const top = this.toFrameY(run.start, rowCount);
+      return {
+        top,
+        bottom: this.toFrameY(run.end, rowCount),
+        rows: run.end - run.start + 1,
+        heightInPitches: (run.end - run.start + 1) / this.rowsPerPitch,
+        pitchesBelowTheCards: cards === void 0 ? Number.POSITIVE_INFINITY : (top - cards.bottom) / this.pitchY,
+        slots: columns.map(
+          (column, slot) => summarise(column.readings, run.start, run.end, centres[slot] ?? 0)
+        )
+      };
+    }
+    /**
+     * The run, completed with the other stripe of its health bar when it is one stripe of a status row.
+     *
+     * Every condition is a reason to hand the run back untouched, and they are in this order so the
+     * cheap ones go first. See {@link STRIPE_PITCH_MIN_IN_CANVAS_HEIGHTS} for the frame and the margins.
+     *
+     * @param between the rows the completion may not reach: the runs either side of this one, so that a
+     *   completed band never swallows a band of its own.
+     */
+    withItsOtherStripe(seed, columns, cards, rowCount, between) {
+      const rows = seed.end - seed.start + 1;
+      if (rows >= this.statusRowMinRows || rows < this.stripeMinRows) return seed;
+      if (cards === void 0 || this.toFrameY(seed.start, rowCount) < cards.bottom) return seed;
+      if (!columns.every((column) => isBarredOver(column, seed))) return seed;
+      const isOtherStripeRow = (row) => isAStripePitchFrom(row, seed, this.stripePitchMinRows, this.stripePitchMaxRows) && isMostlyBarredAndOtherwiseBlank(columns, row);
+      return {
+        start: this.farthestAgreeing(seed.start, -1, between.above, isOtherStripeRow),
+        end: this.farthestAgreeing(seed.end, 1, between.below, isOtherStripeRow)
+      };
+    }
+    /**
+     * How far a band reaches from one of its edges, bridging gaps the way {@link agreeingRuns} does.
+     *
+     * The same bridge and the same arithmetic, so a seam between two stripes is crossed here exactly when
+     * it would have been crossed had every card shown both stripes.
+     */
+    farthestAgreeing(edge, step, stopBefore, agrees) {
+      let reached = edge;
+      for (let row = edge + step; row !== stopBefore && Math.abs(row - reached) <= this.bandBridgeRows + 1; row += step) {
+        if (agrees(row)) reached = row;
+      }
+      return reached;
     }
     /**
      * Where the cards end above a `size`-card lattice, and how much of a card that band was.
@@ -1234,6 +1286,42 @@
   function teamWasWiped(casualties) {
     return casualties.verdict === "someDead" && casualties.alive === 0;
   }
+  function agreeingRuns(columns, rowCount, bridgeRows) {
+    const runs = [];
+    let start = -1;
+    let lastAgreeing = -1;
+    for (let row = 0; row <= rowCount; row += 1) {
+      const agrees = row < rowCount && columns.every((column) => isDecisive(column.readings[row]?.signal));
+      if (agrees) {
+        if (start < 0) start = row;
+        lastAgreeing = row;
+        continue;
+      }
+      if (start < 0) continue;
+      if (row < rowCount && row - lastAgreeing <= bridgeRows) continue;
+      runs.push({ start, end: lastAgreeing });
+      start = -1;
+    }
+    return runs;
+  }
+  function isBarredOver(column, run) {
+    const slot = summarise(column.readings, run.start, run.end, 0);
+    return slot.signal === "alive" && slot.barCoverage < BAR_MAX_COVERAGE;
+  }
+  function isAStripePitchFrom(row, seed, minRows, maxRows) {
+    const nearest = row < seed.start ? seed.start - row : row - seed.end;
+    const farthest = row < seed.start ? seed.end - row : row - seed.start;
+    return nearest <= maxRows && farthest >= minRows;
+  }
+  function isMostlyBarredAndOtherwiseBlank(columns, row) {
+    let barred = 0;
+    for (const column of columns) {
+      const signal = column.readings[row]?.signal;
+      if (signal === "alive") barred += 1;
+      else if (signal !== "silent") return false;
+    }
+    return barred * 2 > columns.length;
+  }
   function isDecisive(signal) {
     return signal === "alive" || signal === "dead";
   }
@@ -1269,8 +1357,8 @@
   function isBarGreen({ hue, saturation }) {
     return hue >= BAR_GREEN.hueMin && hue <= BAR_GREEN.hueMax && saturation >= BAR_GREEN.minSaturation;
   }
-  function isDeadRed({ hue, saturation }) {
-    return (hue <= DEAD_RED.hueBelow || hue >= DEAD_RED.hueAbove) && saturation >= DEAD_RED.minSaturation;
+  function isDeadRed({ hue, saturation, value }) {
+    return (hue <= DEAD_RED.hueBelow || hue >= DEAD_RED.hueAbove) && saturation >= DEAD_RED.minSaturation && saturation * value >= DEAD_RED.minChroma;
   }
   function refused(verdict, reason, scannedFraction) {
     return { verdict, dead: 0, alive: 0, fielded: 0, scannedFraction, diagnostics: reason };
@@ -1978,12 +2066,18 @@
         trackEnd += 1;
       }
       const border = run.start - trackStart;
-      frames.push({ left: start, right: end, fillWidth: trackEnd - trackStart + 1 - 2 * border });
+      frames.push({
+        left: start,
+        right: end,
+        trackLeft: trackStart,
+        trackRight: trackEnd,
+        fillWidth: trackEnd - trackStart + 1 - 2 * border
+      });
     }
     return frames;
   }
   function cardCentreFromBarFrames(frames, pitch) {
-    const centres = frames.map((frame) => (frame.left + frame.right) / 2);
+    const centres = frames.map((frame) => (frame.trackLeft + frame.trackRight) / 2);
     const leftmost = Math.min(...centres);
     return median(centres.map((centre) => centre - pitch * Math.round((centre - leftmost) / pitch)));
   }
@@ -2356,7 +2450,7 @@ ${this.message}`;
   var MIN_ELEMENT_CONFIDENCE = 0.55;
   var PANEL_AREA_RIGHT_EDGE = 0.72;
   var BATTLE_ATTEMPTS_WITHOUT_DELAY = 200;
-  var MAX_CHAINED_SAVE_POINT_DIALOGS = 2;
+  var MAX_REPEATED_COLLECT_CLICKS = 2;
   var SAVE_POINT_COLLECT_MIN_Y = 0.6;
   var GATE_SETTLE_TOLERANCE = 0.01;
   var EMPTY_SLOT_CONFIRMATIONS = 3;
@@ -3251,35 +3345,60 @@ ${this.message}`;
      * **Not fatal is not the same as not waited for, and this used to hand back the moment the first
      * wait expired.** A dialog that is late rather than absent then arrives with nobody left looking
      * for it, and the main loop meets a lone green button — which it refuses to tap anywhere else, for
-     * good reason. So the two waits below are now one window rather than a wait and a return: see the
-     * comment at the timeout for the run it cost, and `MAX_CHAINED_SAVE_POINT_DIALOGS` for why looking
-     * twice more is bounded rather than open-ended.
+     * good reason. So a first wait that comes up empty is followed by a second: see the comment there
+     * for the run it cost. Once the dialog has been clicked, nothing more is waited for - see
+     * `clickCollectUntilItTakes`.
      */
     async collectSavePointLoot() {
       const refusalsSaid = /* @__PURE__ */ new Set();
       const findCollect = () => this.findSavePointCollect(refusalsSaid);
-      const collect = await this.retry(findCollect);
-      if (!collect) {
-        this.log("No Collect dialog appeared; waiting once more in case it is late, not absent.");
-      } else {
+      let collect = await this.retry(findCollect);
+      if (collect) {
         this.log("Collecting save-point loot.");
-        await this.click(collect.center);
+      } else {
+        this.log("No Collect dialog appeared; waiting once more in case it is late, not absent.");
+        collect = await this.retry(findCollect);
+        if (collect) this.log("  the Collect dialog arrived late after all; collecting it.");
       }
-      let collected = collect ? 1 : 0;
-      for (let extra = 0; extra < MAX_CHAINED_SAVE_POINT_DIALOGS; extra += 1) {
-        const another = await this.retry(findCollect);
-        if (!another) break;
-        this.log(
-          collected === 0 ? "  the Collect dialog arrived late after all; collecting it." : "Another save-point dialog; collecting that too."
-        );
-        await this.click(another.center);
-        collected += 1;
-      }
+      if (collect) await this.clickCollectUntilItTakes(collect, findCollect);
       const cleared = await this.retry(async () => {
         const { state } = await this.look();
         return state === "savePoint" ? void 0 : true;
       });
       if (!cleared) this.log("  save point still on screen after collecting; continuing anyway.");
+    }
+    /**
+     * Clicks Collect, then again only while the same dialog is still up a retry delay later.
+     *
+     * Every save point puts up exactly one dialog - "Save point activated! You can start clearing the
+     * dungeon tomorrow, starting at level N", the loot, and Collect - and the dungeon has no last room:
+     * it is endless, with a save point every five rooms. This used to wait out a whole window after
+     * every Collect for a *second* dialog, on the belief, from 2026-08-10, that clearing the last room
+     * of the day chains that one behind the loot dialog. It is the loot dialog. Six browser captures
+     * from one session on 2026-08-07 show it at levels 3046, 3056 and 3061, and the owner, asked on
+     * 2026-10-07, confirmed every save point is the same. What that first run most likely met was its
+     * one dialog still up after a click that had not registered, which clicking again covers - and the
+     * two "Another save-point dialog" lines in a 0.14.3 bundle of 2026-10-06, each at the very point
+     * of the Collect clicked a second earlier, are that same case.
+     *
+     * The wait cost every save point: on the owner's S23 Ultra on 2026-10-07 it was 10.0-11.3s from
+     * Collect to the next battle across seven save points, about seven of them spent looking for a
+     * dialog that was never coming. Now it costs one retry delay, plus a click if the dialog really is
+     * still up then.
+     *
+     * The look is made only after a full retry delay, not straight after the click. A dialog fading
+     * out still reads as a dialog for a moment, and a second click that lands after it has gone lands
+     * on the map instead.
+     */
+    async clickCollectUntilItTakes(first, findCollect) {
+      await this.click(first.center);
+      for (let again = 0; again < MAX_REPEATED_COLLECT_CLICKS; again += 1) {
+        await this.session.wait(this.config.timing.retryDelayMs);
+        const still = await findCollect();
+        if (!still) return;
+        this.log("  the Collect dialog is still on screen; clicking it again.");
+        await this.click(still.center);
+      }
     }
     /**
      * The Collect button of a save point's dialog, if that is what is on screen.
@@ -4920,7 +5039,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.14.4" : "dev";
+  var SCRIPT_VERSION = true ? "0.14.5" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
