@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hero Wars Alliance — Guild Dungeon
 // @namespace    https://github.com/pollingerMaxi/hwa-auto-dungeon
-// @version      0.14.5
+// @version      0.14.6
 // @description  Plays the guild dungeon: picks rooms by element, keeps the healing slot filled, and refuses to fight an understrength team.
 // @match        https://www.hero-wars-alliance.com/*
 // @run-at       document-idle
@@ -561,6 +561,50 @@
     });
   }
 
+  // src/vision/picture.ts
+  var betweenLetterboxBands = {
+    heightIn: (frame) => measurePictureHeight(frame)
+  };
+  function fixedAspectCanvas(aspect) {
+    return { heightIn: (frame) => Math.min(frame.height, frame.width / aspect) };
+  }
+  var BROWSER_CANVAS_ASPECT = 2.19;
+  var FULL_HEIGHT_MIN_ASPECT = 16 / 9;
+  function layoutHeightIn(picture, frame) {
+    return Math.min(picture.heightIn(frame), frame.width / FULL_HEIGHT_MIN_ASPECT);
+  }
+  var ANDROID_PICTURE = betweenLetterboxBands;
+  var BROWSER_PICTURE = fixedAspectCanvas(BROWSER_CANVAS_ASPECT);
+  var LETTERBOX_BLACK_MAX_CHANNEL = 4;
+  var LETTERBOX_MAX_LIT_SHARE = 0.5;
+  var RGBA_CHANNELS2 = 4;
+  function measurePictureHeight(frame) {
+    let top = 0;
+    while (top < frame.height && isLetterboxRow(frame, top)) top += 1;
+    if (top === frame.height) return 0;
+    let bottom = 0;
+    while (bottom < frame.height - top && isLetterboxRow(frame, frame.height - 1 - bottom)) bottom += 1;
+    return frame.height - top - bottom;
+  }
+  function isLetterboxRow(frame, y) {
+    const litAllowed = Math.floor(frame.width * LETTERBOX_MAX_LIT_SHARE);
+    let lit = 0;
+    const rowStart = y * frame.width * RGBA_CHANNELS2;
+    for (let x = 0; x < frame.width; x += 1) {
+      const offset = rowStart + x * RGBA_CHANNELS2;
+      const brightest = Math.max(
+        frame.data[offset] ?? 0,
+        frame.data[offset + 1] ?? 0,
+        frame.data[offset + 2] ?? 0
+      );
+      if (brightest > LETTERBOX_BLACK_MAX_CHANNEL) {
+        lit += 1;
+        if (lit > litAllowed) return false;
+      }
+    }
+    return true;
+  }
+
   // src/vision/elements.ts
   var ELEMENT_HUES = [
     // Measured fire orbs at 9 and 38 degrees depending on how much of the bright
@@ -574,22 +618,30 @@
   var MIX_MINIMUM_HUE_CLUSTERS = 3;
   var MAX_HUE_ERROR_DEGREES = 45;
   var MIN_SAMPLE_RATIO = 0.03;
-  function emblemBoxAboveAttackButton(attackButton) {
-    const CENTRE_ABOVE_BUTTON = 0.145;
-    const width = 0.045;
-    const height = 0.095;
+  var EMBLEM_CENTRE_ABOVE_BUTTON = 0.145;
+  var EMBLEM_BOX_HEIGHT = 0.095;
+  var EMBLEM_BOX_WIDTH_IN_LAYOUT_HEIGHTS = 0.0975;
+  function emblemBoxAboveAttackButton(attackButton, frame, picture) {
+    const layoutRows = layoutHeightIn(picture, frame);
+    const width = frame.width === 0 ? 0 : EMBLEM_BOX_WIDTH_IN_LAYOUT_HEIGHTS * layoutRows / frame.width;
     return {
       x: attackButton.x - width / 2,
-      y: attackButton.y - CENTRE_ABOVE_BUTTON - height / 2,
+      y: attackButton.y - EMBLEM_CENTRE_ABOVE_BUTTON - EMBLEM_BOX_HEIGHT / 2,
       w: width,
-      h: height
+      h: EMBLEM_BOX_HEIGHT
     };
   }
+  var PANEL_ATTACK_MAX_OFFSET_IN_LAYOUT_HEIGHTS = 0.52;
+  function isInPanelArea(button2, frame, picture) {
+    const layoutRows = layoutHeightIn(picture, frame);
+    if (layoutRows <= 0) return false;
+    const offsetInLayoutHeights = (button2.x - 0.5) * frame.width / layoutRows;
+    return offsetInLayoutHeights < PANEL_ATTACK_MAX_OFFSET_IN_LAYOUT_HEIGHTS;
+  }
   async function hasWingedEmblem(screenshot, attackButton) {
-    const emblem = emblemBoxAboveAttackButton(attackButton);
     const band = {
       x: Math.max(0, attackButton.x - WING_SPAN / 2),
-      y: emblem.y + emblem.h / 2 - WING_BAND_HEIGHT / 2,
+      y: attackButton.y - EMBLEM_CENTRE_ABOVE_BUTTON - WING_BAND_HEIGHT / 2,
       w: WING_SPAN,
       h: WING_BAND_HEIGHT
     };
@@ -670,50 +722,6 @@
     return Math.min(Math.max(value, 0), 1);
   }
 
-  // src/vision/picture.ts
-  var betweenLetterboxBands = {
-    heightIn: (frame) => measurePictureHeight(frame)
-  };
-  function fixedAspectCanvas(aspect) {
-    return { heightIn: (frame) => Math.min(frame.height, frame.width / aspect) };
-  }
-  var BROWSER_CANVAS_ASPECT = 2.19;
-  var FULL_HEIGHT_MIN_ASPECT = 16 / 9;
-  function layoutHeightIn(picture, frame) {
-    return Math.min(picture.heightIn(frame), frame.width / FULL_HEIGHT_MIN_ASPECT);
-  }
-  var ANDROID_PICTURE = betweenLetterboxBands;
-  var BROWSER_PICTURE = fixedAspectCanvas(BROWSER_CANVAS_ASPECT);
-  var LETTERBOX_BLACK_MAX_CHANNEL = 4;
-  var LETTERBOX_MAX_LIT_SHARE = 0.5;
-  var RGBA_CHANNELS2 = 4;
-  function measurePictureHeight(frame) {
-    let top = 0;
-    while (top < frame.height && isLetterboxRow(frame, top)) top += 1;
-    if (top === frame.height) return 0;
-    let bottom = 0;
-    while (bottom < frame.height - top && isLetterboxRow(frame, frame.height - 1 - bottom)) bottom += 1;
-    return frame.height - top - bottom;
-  }
-  function isLetterboxRow(frame, y) {
-    const litAllowed = Math.floor(frame.width * LETTERBOX_MAX_LIT_SHARE);
-    let lit = 0;
-    const rowStart = y * frame.width * RGBA_CHANNELS2;
-    for (let x = 0; x < frame.width; x += 1) {
-      const offset = rowStart + x * RGBA_CHANNELS2;
-      const brightest = Math.max(
-        frame.data[offset] ?? 0,
-        frame.data[offset + 1] ?? 0,
-        frame.data[offset + 2] ?? 0
-      );
-      if (brightest > LETTERBOX_BLACK_MAX_CHANNEL) {
-        lit += 1;
-        if (lit > litAllowed) return false;
-      }
-    }
-    return true;
-  }
-
   // src/vision/casualties.ts
   var MAX_TEAM_SIZE = 5;
   var SLOT_PITCH_IN_CANVAS_HEIGHTS = 0.17431;
@@ -730,7 +738,11 @@
     minChroma: DEAD_RED_MIN_CHROMA
   };
   var SIGNAL_MIN_COVERAGE = 0.15;
+  var DEAD_WORD_MIN_SHARE_OF_BAND = 0.3;
   var BAR_MAX_COVERAGE = 0.79;
+  var LOOT_HUE = { min: 180, max: 330 };
+  var LOOT_MIN_SATURATION_AND_VALUE = 0.3;
+  var LOOT_MAX_SHARE = 0.01;
   var STATUS_ROW_MIN_HEIGHT_IN_PITCHES = 0.22;
   var BAND_BRIDGE_IN_PITCHES = 0.3;
   var STRIPE_PITCH_MIN_IN_CANVAS_HEIGHTS = 95e-4;
@@ -744,7 +756,7 @@
   var CARD_BAND_MIN_HEIGHT_IN_PITCHES = 1;
   var CARD_BAND_WINDOW_IN_PITCHES = 0.25;
   var CARD_BAND_MAX_HEIGHT_IN_PITCHES = 7.8;
-  var MAX_FRAME_ASPECT = 2.27;
+  var MAX_PICTURE_ASPECT = 2.29;
   var MIN_PICTURE_ASPECT = 1.6;
   var PITCH_UNIT_MIN_ASPECT = 16 / 9;
   var DialogGeometry = class {
@@ -823,17 +835,9 @@
   function reportsDeath(band) {
     return band.slots.some((slot) => slot.signal === "dead");
   }
-  function readBattleCasualties(frame, dialogBody, picture, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE, stripeMinHeightInCanvasHeights = STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS) {
+  function readBattleCasualties(frame, dialogBody, picture, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE, stripeMinHeightInCanvasHeights = STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS, lootMaxShare = LOOT_MAX_SHARE, deadWordMinShare = DEAD_WORD_MIN_SHARE_OF_BAND) {
     if (dialogBody.h <= 0 || dialogBody.w <= 0 || frame.width === 0 || frame.height === 0) {
       return unreadable("the dialog has no body between its banner and its buttons", 0);
-    }
-    const aspect = frame.width / frame.height;
-    if (aspect > MAX_FRAME_ASPECT) {
-      return refused(
-        "unsupportedFrameShape",
-        `the frame is ${frame.width}x${frame.height}, an aspect of ${aspect.toFixed(4)}, wider than the ${MAX_FRAME_ASPECT} this reading has ever been shown a capture of; the team lattice is placed from the height of the game's picture and nothing here has measured a picture that shape`,
-        0
-      );
     }
     const scan = new DialogScan(
       frame,
@@ -843,10 +847,20 @@
       void 0,
       cardBandMaxHeightInPitches,
       barMaxCoverage,
-      stripeMinHeightInCanvasHeights
+      stripeMinHeightInCanvasHeights,
+      lootMaxShare,
+      deadWordMinShare
     );
     if (scan.geometry.canvasHeight < 1) {
       return unreadable("the frame holds no game picture between its letterbox bands", 0);
+    }
+    if (scan.geometry.pictureAspect > MAX_PICTURE_ASPECT) {
+      const rows = Math.round(scan.geometry.pictureRows);
+      return refused(
+        "unsupportedFrameShape",
+        `the game's picture is ${frame.width}x${rows}, an aspect of ${scan.geometry.pictureAspect.toFixed(4)}, wider than the ${MAX_PICTURE_ASPECT} this reading has ever been shown a capture of; the team lattice is placed from the height of the game's picture and nothing here has measured a picture that shape`,
+        0
+      );
     }
     if (scan.geometry.pictureAspect < MIN_PICTURE_ASPECT) {
       const rows = Math.round(scan.geometry.pictureRows);
@@ -900,13 +914,21 @@
      *   {@link STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS}, and `Infinity` turns the stripe completion off - no
      *   run is that tall - which is how both suites show that it, and nothing else, is what reads the
      *   2026-10-07 abort frame.
+     * @param lootMaxShare defaults to the shipped {@link LOOT_MAX_SHARE}, and `Infinity` turns the
+     *   covered-slot refusal off - which, with `barMaxCoverage` off as well, is how both suites show the
+     *   Infinix's loot frame reading five alive off the tiles' colours.
+     * @param deadWordMinShare defaults to the shipped {@link DEAD_WORD_MIN_SHARE_OF_BAND}, and `0` turns it
+     *   off - no share is below zero - which is how both suites show that the 2026-10-15 frames are the
+     *   only readings it moves.
      */
-    constructor(frame, body, picture, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE, stripeMinHeightInCanvasHeights = STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS) {
+    constructor(frame, body, picture, bandBridgeInPitches = BAND_BRIDGE_IN_PITCHES, cardBandMaxGapInPitches = CARD_BAND_MAX_GAP_IN_PITCHES, cardBandMaxHeightInPitches = CARD_BAND_MAX_HEIGHT_IN_PITCHES, barMaxCoverage = BAR_MAX_COVERAGE, stripeMinHeightInCanvasHeights = STRIPE_MIN_HEIGHT_IN_CANVAS_HEIGHTS, lootMaxShare = LOOT_MAX_SHARE, deadWordMinShare = DEAD_WORD_MIN_SHARE_OF_BAND) {
       this.frame = frame;
       this.body = body;
       this.cardBandMaxGapInPitches = cardBandMaxGapInPitches;
       this.cardBandMaxHeightInPitches = cardBandMaxHeightInPitches;
       this.barMaxCoverage = barMaxCoverage;
+      this.lootMaxShare = lootMaxShare;
+      this.deadWordMinShare = deadWordMinShare;
       this.geometry = new DialogGeometry(frame, picture);
       this.pitchY = this.geometry.pitchY;
       this.rowsPerPitch = this.pitchY * frame.height;
@@ -1028,7 +1050,7 @@
         heightInPitches: (run.end - run.start + 1) / this.rowsPerPitch,
         pitchesBelowTheCards: cards === void 0 ? Number.POSITIVE_INFINITY : (top - cards.bottom) / this.pitchY,
         slots: columns.map(
-          (column, slot) => summarise(column.readings, run.start, run.end, centres[slot] ?? 0)
+          (column, slot) => summarise(column.readings, run.start, run.end, centres[slot] ?? 0, this.deadWordMinShare)
         )
       };
     }
@@ -1045,7 +1067,7 @@
       const rows = seed.end - seed.start + 1;
       if (rows >= this.statusRowMinRows || rows < this.stripeMinRows) return seed;
       if (cards === void 0 || this.toFrameY(seed.start, rowCount) < cards.bottom) return seed;
-      if (!columns.every((column) => isBarredOver(column, seed))) return seed;
+      if (!columns.every((column) => isBarredOver(column, seed, this.deadWordMinShare))) return seed;
       const isOtherStripeRow = (row) => isAStripePitchFrom(row, seed, this.stripePitchMinRows, this.stripePitchMaxRows) && isMostlyBarredAndOtherwiseBlank(columns, row);
       return {
         start: this.farthestAgreeing(seed.start, -1, between.above, isOtherStripeRow),
@@ -1171,6 +1193,17 @@
           deathMarksSeen: dead
         };
       }
+      const covered = row.slots.filter((slot) => slot.lootShare >= this.lootMaxShare);
+      if (covered.length > 0) {
+        return {
+          ...unreadable(
+            `${reading}; ${covered.length} of them had a reward tile's colours over the mark (${covered.map((slot) => `${slot.centre.toFixed(3)} at ${slot.lootShare.toFixed(2)}`).join(", ")}, past the ${LOOT_MAX_SHARE} a status row never reaches), so what it said was the tile's`,
+            this.scannedFraction
+          ),
+          floodedWindow: true,
+          deathMarksSeen: dead
+        };
+      }
       return {
         verdict: verdictFor(size, alive, dead),
         dead,
@@ -1193,7 +1226,13 @@
       const column = {
         readings: bar.coverage.map((barCoverage, row) => {
           const wordCoverage = word.coverage[row] ?? 0;
-          return { signal: signalFor(barCoverage, wordCoverage), barCoverage, wordCoverage };
+          return {
+            signal: signalFor(barCoverage, wordCoverage),
+            barCoverage,
+            wordCoverage,
+            barLoot: bar.loot[row] ?? 0,
+            wordLoot: word.loot[row] ?? 0
+          };
         }),
         brightest: bar.brightest.map((value, row) => Math.max(value, word.brightest[row] ?? 0)),
         darkest: bar.darkest.map((value, row) => Math.min(value, word.darkest[row] ?? 1))
@@ -1221,21 +1260,25 @@
       const coverage = [];
       const brightest = [];
       const darkest = [];
+      const loot = [];
       for (let y = 0; y < pixels.height; y += 1) {
         let hits = 0;
+        let lootHits = 0;
         let high = 0;
         let low = 1;
         for (let x = 0; x < pixels.width; x += 1) {
           const pixel = pixelAt(pixels, x, y);
           if (matches(pixel)) hits += 1;
+          if (isLootColour(pixel)) lootHits += 1;
           if (pixel.value > high) high = pixel.value;
           if (pixel.value < low) low = pixel.value;
         }
         coverage.push(pixels.width === 0 ? 0 : hits / pixels.width);
+        loot.push(pixels.width === 0 ? 0 : lootHits / pixels.width);
         brightest.push(high);
         darkest.push(pixels.width === 0 ? 1 : low);
       }
-      return { coverage, brightest, darkest };
+      return { coverage, brightest, darkest, loot };
     }
     /** Whether a titan's card is drawn above this lattice position, loaded artwork or not. */
     hasPortrait(centre, rowTop) {
@@ -1304,8 +1347,8 @@
     }
     return runs;
   }
-  function isBarredOver(column, run) {
-    const slot = summarise(column.readings, run.start, run.end, 0);
+  function isBarredOver(column, run, deadWordMinShare) {
+    const slot = summarise(column.readings, run.start, run.end, 0, deadWordMinShare);
     return slot.signal === "alive" && slot.barCoverage < BAR_MAX_COVERAGE;
   }
   function isAStripePitchFrom(row, seed, minRows, maxRows) {
@@ -1342,20 +1385,47 @@
     if (hasWord) return "dead";
     return "silent";
   }
-  function summarise(column, start, end, centre) {
+  function settledSignal(signal, wordShare, deadWordMinShare) {
+    return signal === "contradictory" && wordShare < deadWordMinShare ? "alive" : signal;
+  }
+  function summarise(column, start, end, centre, deadWordMinShare) {
     let bar = 0;
     let word = 0;
+    let barLoot = 0;
+    let wordLoot = 0;
+    let wordRows = 0;
     for (let row = start; row <= end; row += 1) {
       bar = Math.max(bar, column[row]?.barCoverage ?? 0);
       word = Math.max(word, column[row]?.wordCoverage ?? 0);
+      barLoot += column[row]?.barLoot ?? 0;
+      wordLoot += column[row]?.wordLoot ?? 0;
+      if ((column[row]?.wordCoverage ?? 0) >= SIGNAL_MIN_COVERAGE) wordRows += 1;
     }
-    return { centre, barCoverage: bar, wordCoverage: word, signal: signalFor(bar, word) };
+    const rows = Math.max(1, end - start + 1);
+    return {
+      centre,
+      barCoverage: bar,
+      wordCoverage: word,
+      wordRows,
+      bandRows: rows,
+      signal: settledSignal(signalFor(bar, word), wordRows / rows, deadWordMinShare),
+      barLoot: barLoot / rows,
+      wordLoot: wordLoot / rows,
+      lootShare: Math.max(barLoot, wordLoot) / rows
+    };
   }
   function describe(slot) {
-    return `${slot.centre.toFixed(3)}:${slot.signal}(bar=${slot.barCoverage.toFixed(2)} word=${slot.wordCoverage.toFixed(2)})`;
+    return `${slot.centre.toFixed(3)}:${slot.signal}(bar=${slot.barCoverage.toFixed(2)} word=${slot.wordCoverage.toFixed(2)}${wordSetAside(slot)})`;
+  }
+  function wordSetAside(slot) {
+    if (slot.signal !== "alive" || slot.wordCoverage < SIGNAL_MIN_COVERAGE) return "";
+    return ` on ${slot.wordRows} of ${slot.bandRows} rows`;
   }
   function isBarGreen({ hue, saturation }) {
     return hue >= BAR_GREEN.hueMin && hue <= BAR_GREEN.hueMax && saturation >= BAR_GREEN.minSaturation;
+  }
+  function isLootColour({ hue, saturation, value }) {
+    return hue >= LOOT_HUE.min && hue <= LOOT_HUE.max && saturation >= LOOT_MIN_SATURATION_AND_VALUE && value >= LOOT_MIN_SATURATION_AND_VALUE;
   }
   function isDeadRed({ hue, saturation, value }) {
     return (hue <= DEAD_RED.hueBelow || hue >= DEAD_RED.hueAbove) && saturation >= DEAD_RED.minSaturation && saturation * value >= DEAD_RED.minChroma;
@@ -1545,7 +1615,7 @@
             const reading = await readBattleOption(
               screenshot,
               "single",
-              emblemBoxAboveAttackButton(button2.center)
+              emblemBoxAboveAttackButton(button2.center, screenshot, this.picture)
             );
             return reading.confidence >= MIN_EMBLEM_CONFIDENCE;
           })
@@ -1830,12 +1900,15 @@
   var BADGE_SHARE_OF_TILE = 0.22;
   var ART_BOTTOM_SHARE_OF_TILE = 0.58;
   var TILE_WINDOW_SHARE_OF_PITCH = 1.4;
+  var TILE_MAX_HEIGHT_IN_PITCHES = 1.1;
+  var CARDS_VOUCHING_ON_A_COVERED_STRIP = 2;
+  var STAR_ROW_INSET = 0.07;
   var CARD_DETAIL_THRESHOLD = 0.06;
   var TILE_PROBE_INSET = 0.15;
   var TICK_SEARCH_SHARE_OF_TILE = 0.45;
   var ART_SHARE_OF_CARD_WIDTH = 0.66;
   var isHealth = (pixel) => pixel.hue >= HEALTH_HUE.min && pixel.hue <= HEALTH_HUE.max && pixel.saturation >= HEALTH_MIN_SATURATION && pixel.value >= HEALTH_MIN_VALUE;
-  async function deriveRosterGeometry(screenshot, onTickBlob) {
+  async function deriveRosterGeometry(screenshot, onTickBlob, onStripProbe) {
     const whole = cropRegion(screenshot, {
       left: 0,
       top: 0,
@@ -1874,27 +1947,51 @@
     );
     const anchorCentre = cardCentreFromBarFrames(frames, pitch);
     const barCentres = health.lattice.runs.map((run) => run.start + frameWidth / 2);
-    const tile = findTileBand(
+    const window2 = scanTileWindow(
       pixels,
       health.top,
-      background,
       barCentres,
       frameWidth,
       Math.round(pitch * TILE_WINDOW_SHARE_OF_PITCH)
     );
-    if (!tile) {
+    const ordinary = tallestBand(window2, 1);
+    if (!ordinary) {
       return refuse(notes, "could not find the card tiles above the bars");
+    }
+    const tallestAllowed = pitch * TILE_MAX_HEIGHT_IN_PITCHES;
+    let tile = ordinary;
+    let coveringColumns = [];
+    if (ordinary.bottom - ordinary.top > tallestAllowed) {
+      const recovered = tallestBand(window2, CARDS_VOUCHING_ON_A_COVERED_STRIP);
+      const stretched = `the tile band is rows ${ordinary.top}-${ordinary.bottom}, ${inPitches(ordinary.bottom - ordinary.top, pitch)} pitches tall against a card's 1`;
+      if (!recovered || recovered.bottom - recovered.top > tallestAllowed) {
+        return refuse(
+          notes,
+          `${stretched}, and still ` + (recovered ? `${inPitches(recovered.bottom - recovered.top, pitch)} on the rows two cards agree on` : "no band on the rows two cards agree on"),
+          SOMETHING_IS_DRAWN_OVER_THE_STRIP
+        );
+      }
+      coveringColumns = columnsVouchingAlone(window2, ordinary, recovered);
+      notes.push(`${stretched}; set aside the rows only one card showed detail on`);
+      tile = recovered;
     }
     const tileHeight = tile.bottom - tile.top;
     const tileTop = tile.top;
-    notes.push(`tile rows ${tile.top}-${tile.bottom} (${tileHeight}px)`);
+    notes.push(
+      `tile rows ${tile.top}-${tile.bottom} (${tileHeight}px, ${inPitches(tileHeight, pitch)} pitches)`
+    );
     const strip = walkStrip(
       pixels,
-      Math.round(tile.top + tileHeight * TILE_PROBE_INSET),
-      Math.round(tile.bottom - tileHeight * TILE_PROBE_INSET),
+      {
+        nearTop: Math.round(tile.top + tileHeight * TILE_PROBE_INSET),
+        nearBottom: Math.round(tile.bottom - tileHeight * TILE_PROBE_INSET),
+        starRow: Math.round(tile.bottom - tileHeight * STAR_ROW_INSET)
+      },
       anchorCentre,
       pitch,
-      frameWidth
+      frameWidth,
+      barCentres,
+      onStripProbe
     );
     notes.push(
       `${strip.count} cards, pitch ${pitch.toFixed(1)}px, first centre ${strip.firstCentre.toFixed(1)}px`
@@ -1905,6 +2002,21 @@
         `the tile band is ${tileHeight}px against a ${pitch.toFixed(0)}px pitch and holds no artwork to count cards by`,
         ARTWORK_HAS_NOT_ARRIVED
       );
+    }
+    const barCards = barCentres.map((centre) => cardIndexAt(centre, strip.firstCentre, pitch));
+    const unconfirmed = barCards.filter((card) => card < 0 || card >= strip.count);
+    if (unconfirmed.length > 0) {
+      return refuse(
+        notes,
+        `${barCentres.length} health bars are drawn but the artwork confirms ${strip.count} card${strip.count === 1 ? "" : "s"}, and ${unconfirmed.length} of the bars stand where no card was confirmed`,
+        SOMETHING_IS_DRAWN_OVER_THE_STRIP
+      );
+    }
+    const coveredCards = [
+      ...new Set(coveringColumns.map((column) => barCards[column] ?? -1).filter((card) => card >= 0))
+    ].sort((a, b) => a - b);
+    if (coveredCards.length > 0) {
+      notes.push(`something is ${DRAWN_OVER_THE_STRIP} at card ${coveredCards.join(", ")}`);
     }
     const tick = findTick(
       pixels,
@@ -1949,7 +2061,13 @@
       // Left to configuration until it can be derived from a frame that shows it.
       elementBadge: null
     };
-    return { geometry, diagnostics: notes.join("; ") };
+    return { geometry, diagnostics: notes.join("; "), coveredCards };
+  }
+  function cardIndexAt(centre, firstCentre, pitch) {
+    return Math.round((centre - firstCentre) / pitch);
+  }
+  function inPitches(rows, pitch) {
+    return (rows / pitch).toFixed(2);
   }
   function fitLattice(runs, tolerance) {
     if (runs.length < MIN_BARS) return void 0;
@@ -1990,9 +2108,11 @@
   }
   var BARS_ARE_THE_ANCHOR = "The strip is anchored on the titans' health bars, and a dead titan draws none at all - so a roster with fewer than three living titans in it cannot be measured, and the configured geometry has to stand in.";
   var ARTWORK_HAS_NOT_ARRIVED = "Cards are counted on their artwork, because a dead titan draws no bar to count instead - and until the portraits load the game fills every tile with a flat element colour, which has nothing to count. This is a screen still assembling, not a screen without a roster; a frame in this state is also the one that makes portrait matching quietly wrong, so it is refused rather than measured.";
+  var SOMETHING_IS_DRAWN_OVER_THE_STRIP = "Something is drawn over the strip, or part of it has not been drawn yet, and the strip's own measurements disagree because of it - so none of them is used. Nothing is wrong with the roster: with the cards uncovered and the screen settled, the same strip measures.";
+  var DRAWN_OVER_THE_STRIP = "drawn over the strip";
   function refuse(notes, detail, because = BARS_ARE_THE_ANCHOR) {
     const measured = notes.length === 0 ? "" : `${notes.join("; ")}; `;
-    return { diagnostics: `${measured}${detail}. ${because}` };
+    return { diagnostics: `${measured}${detail}. ${because}`, coveredCards: [] };
   }
   function findBarBand(pixels, matches, searchTop, searchBottom, tolerance, preferLowest = false) {
     const minWidth = Math.round(MIN_BAR_WIDTH * pixels.width);
@@ -2081,19 +2201,33 @@
     const leftmost = Math.min(...centres);
     return median(centres.map((centre) => centre - pitch * Math.round((centre - leftmost) / pitch)));
   }
-  function walkStrip(pixels, nearTop, nearBottom, anchorCentre, pitch, frameWidth) {
-    const present = (centre) => {
+  function walkStrip(pixels, rows, anchorCentre, pitch, frameWidth, barCentres, onProbe) {
+    const present = (fromAnchor) => {
+      const centre = anchorCentre + fromAnchor * pitch;
       if (centre - frameWidth / 2 < 0 || centre + frameWidth / 2 >= pixels.width) return false;
-      return detailAcross(pixels, nearTop, centre, frameWidth) >= CARD_DETAIL_THRESHOLD && detailAcross(pixels, nearBottom, centre, frameWidth) >= CARD_DETAIL_THRESHOLD;
+      const top = detailAcross(pixels, rows.nearTop, centre, frameWidth);
+      const bottom = detailAcross(pixels, rows.nearBottom, centre, frameWidth);
+      const starRow = detailAcross(pixels, rows.starRow, centre, frameWidth);
+      const admitted = top >= CARD_DETAIL_THRESHOLD && bottom >= CARD_DETAIL_THRESHOLD && starRow >= CARD_DETAIL_THRESHOLD;
+      onProbe?.({
+        fromAnchor,
+        centre,
+        top,
+        bottom,
+        starRow,
+        carriesABar: barCentres.some((bar) => cardIndexAt(bar, centre, pitch) === 0),
+        admitted
+      });
+      return admitted;
     };
-    let firstCentre = anchorCentre;
-    while (present(firstCentre - pitch)) firstCentre -= pitch;
+    let first = 0;
+    while (present(first - 1)) first -= 1;
     let count = 0;
     for (let index = 0; ; index += 1) {
-      if (!present(firstCentre + index * pitch)) break;
+      if (!present(first + index)) break;
       count = index + 1;
     }
-    return { firstCentre, count };
+    return { firstCentre: anchorCentre + first * pitch, count };
   }
   function tickBlobForCard(pixels, centre, pitch, searchTopRow, healthTop) {
     const searchTop = Math.max(0, searchTopRow);
@@ -2153,30 +2287,47 @@
       top
     };
   }
-  function findTileBand(pixels, healthTop, background, cardCentres, frameWidth, windowHeight) {
-    const limit = Math.max(
-      Math.round(STRIP_SEARCH_TOP * pixels.height),
-      healthTop - windowHeight
-    );
-    const covered = (y) => cardCentres.some((centre) => detailAcross(pixels, y, centre, frameWidth) >= CARD_DETAIL_THRESHOLD);
+  function scanTileWindow(pixels, healthTop, cardCentres, frameWidth, windowHeight) {
+    const top = Math.max(Math.round(STRIP_SEARCH_TOP * pixels.height), healthTop - windowHeight);
+    const cardsWithDetail = [];
+    for (let y = top; y < healthTop; y += 1) {
+      const cards = [];
+      cardCentres.forEach((centre, card) => {
+        if (detailAcross(pixels, y, centre, frameWidth) >= CARD_DETAIL_THRESHOLD) cards.push(card);
+      });
+      cardsWithDetail.push(cards);
+    }
+    return { top, cardsWithDetail };
+  }
+  function tallestBand(window2, vouching) {
     let best;
     let runBottom;
-    for (let y = healthTop - 1; y >= limit; y -= 1) {
-      if (covered(y)) {
+    const consider = (candidate) => {
+      if (!best || candidate.bottom - candidate.top > best.bottom - best.top) best = candidate;
+    };
+    for (let row = window2.cardsWithDetail.length - 1; row >= 0; row -= 1) {
+      const y = window2.top + row;
+      if ((window2.cardsWithDetail[row]?.length ?? 0) >= vouching) {
         if (runBottom === void 0) runBottom = y;
         continue;
       }
       if (runBottom !== void 0) {
-        const candidate = { top: y + 1, bottom: runBottom };
-        if (!best || candidate.bottom - candidate.top > best.bottom - best.top) best = candidate;
+        consider({ top: y + 1, bottom: runBottom });
         runBottom = void 0;
       }
     }
-    if (runBottom !== void 0) {
-      const candidate = { top: limit, bottom: runBottom };
-      if (!best || candidate.bottom - candidate.top > best.bottom - best.top) best = candidate;
+    if (runBottom !== void 0) consider({ top: window2.top, bottom: runBottom });
+    const found = best;
+    return found && found.bottom > found.top ? found : void 0;
+  }
+  function columnsVouchingAlone(window2, ordinary, recovered) {
+    const columns = /* @__PURE__ */ new Set();
+    for (let y = ordinary.top; y <= ordinary.bottom; y += 1) {
+      if (y >= recovered.top && y <= recovered.bottom) continue;
+      const cards = window2.cardsWithDetail[y - window2.top] ?? [];
+      if (cards.length === 1) columns.add(cards[0]);
     }
-    return best && best.bottom > best.top ? best : void 0;
+    return [...columns];
   }
   function detailAcross(pixels, y, centre, width) {
     const left = Math.max(0, Math.round(centre - width / 2));
@@ -2448,7 +2599,6 @@ ${this.message}`;
 
   // src/flow/DungeonRunner.ts
   var MIN_ELEMENT_CONFIDENCE = 0.55;
-  var PANEL_AREA_RIGHT_EDGE = 0.72;
   var BATTLE_ATTEMPTS_WITHOUT_DELAY = 200;
   var MAX_REPEATED_COLLECT_CLICKS = 2;
   var SAVE_POINT_COLLECT_MIN_Y = 0.6;
@@ -2496,14 +2646,22 @@ ${this.message}`;
     return `${died} ${whatIsLeft} Setting strategy.team.allowIncompleteTeam would fight every remaining room a titan short rather than fix that.`;
   }
   function unreadableStripRemedy(why) {
-    return `No roster strip could be found on this frame at all - ${whyTheStripWasRefused(why)}, says the reading - so the tick count above was read through card positions that nothing on this screen confirmed. Both reasons the reading knows are about a strip that is where it belongs and cannot be read, so a roster in any other view arrives wearing one of them: if this roster is in the multi-row grid rather than the bottom strip, that is the thing to fix first, because every card position this run uses was measured on the strip. It does not follow that the empty slot above is wrong - that is read off the arena, not off the strip. ` + FILL_THE_TEAM;
+    return `No roster strip could be found on this frame at all - ${whyTheStripWasRefused(why)}, says the reading - so the tick count above was read through card positions that nothing on this screen confirmed. Every reason the reading knows is about a strip that is where it belongs and cannot be read, so a roster in any other view arrives wearing one of them: if this roster is in the multi-row grid rather than the bottom strip, that is the thing to fix first, because every card position this run uses was measured on the strip. It does not follow that the empty slot above is wrong - that is read off the arena, not off the strip. ` + FILL_THE_TEAM;
   }
   var STILL_ASSEMBLING_PHRASE = "still assembling";
   function stripRefusalFrom(diagnostics) {
+    if (diagnostics.includes(DRAWN_OVER_THE_STRIP)) return "drawnOver";
     return diagnostics.includes(STILL_ASSEMBLING_PHRASE) ? "stillAssembling" : "tooFewLivingTitans";
   }
   function whyTheStripWasRefused(why) {
-    return why === "stillAssembling" ? "the screen is still being drawn" : "too few titans are still alive to draw the bars it is measured from";
+    switch (why) {
+      case "stillAssembling":
+        return "the screen is still being drawn";
+      case "tooFewLivingTitans":
+        return "too few titans are still alive to draw the bars it is measured from";
+      case "drawnOver":
+        return "something is drawn over the strip, or part of it is not drawn yet";
+    }
   }
   function teamHealthLine(fielded, benched) {
     const readings = fielded.map(
@@ -2830,7 +2988,9 @@ ${this.message}`;
       if (!screenshot) {
         throw await this.abort("No frame was kept from the screen that was classified.");
       }
-      const attackButtons = detection.actionButtons.filter((blob) => blob.center.y > 0.7 && blob.center.x < PANEL_AREA_RIGHT_EDGE).sort((a, b) => a.center.x - b.center.x);
+      const attackButtons = detection.actionButtons.filter(
+        (blob) => blob.center.y > 0.7 && isInPanelArea(blob.center, screenshot, this.detector.picture)
+      ).sort((a, b) => a.center.x - b.center.x);
       if (attackButtons.length === 0) {
         throw await this.abort("On the battle-choice screen but no Attack button could be located.");
       }
@@ -2840,7 +3000,7 @@ ${this.message}`;
         const reading = await readBattleOption(
           screenshot,
           side,
-          emblemBoxAboveAttackButton(button2.center)
+          emblemBoxAboveAttackButton(button2.center, screenshot, this.detector.picture)
         );
         this.log(`  ${side}: ${reading.element} (confidence ${reading.confidence.toFixed(2)}, ${reading.diagnostics})`);
         options.push(reading);
@@ -3537,7 +3697,7 @@ ${this.message}`;
             // named owner and a next step, which is exactly what an abort is for.
             case "unsupportedFrameShape":
               throw await this.abort(
-                `This screen is a shape the casualty reading has never been measured on, so the result was refused rather than guessed at: ${casualties.diagnostics}. The team lattice is placed from the height of the game's own picture, and ${MIN_PICTURE_ASPECT} to ${MAX_FRAME_ASPECT} is the range of shapes that reading has been measured on - the real captures here run from a 1.6 tablet to a 2.2222 phone - so outside it nothing has measured where the cards are drawn, and the reading refuses rather than answer "nobody died" about a battle that may have killed a titan. Looking again cannot help - a shape belongs to the screen and not to the moment, so every dialog this run meets will be the same - which is why nothing was clicked, nothing was waited out, and the dialog is still on screen. What would fix it is a result-dialog capture from a screen this shape: the gate is there because no such frame exists in either corpus, not because the dialog is unreadable in principle, so send one in and the reading can be measured on it. Until then, either give the game a screen nearer 2:1 - this run is reading ${this.session.describe()} - or turn safety.stopWhenTitanDies off to have results collected unread.`
+                `This screen is a shape the casualty reading has never been measured on, so the result was refused rather than guessed at: ${casualties.diagnostics}. The team lattice is placed from the height of the game's own picture, and ${MIN_PICTURE_ASPECT} to ${MAX_PICTURE_ASPECT} is the range of shapes that reading has been measured on - the real captures here run from a 1.6 tablet to a 2.2778 phone - so outside it nothing has measured where the cards are drawn, and the reading refuses rather than answer "nobody died" about a battle that may have killed a titan. Looking again cannot help - a shape belongs to the screen and not to the moment, so every dialog this run meets will be the same - which is why nothing was clicked, nothing was waited out, and the dialog is still on screen. What would fix it is a result-dialog capture from a screen this shape: the gate is there because no such frame exists in either corpus, not because the dialog is unreadable in principle, so send one in and the reading can be measured on it. Until then, either give the game a screen nearer 2:1 - this run is reading ${this.session.describe()} - or turn safety.stopWhenTitanDies off to have results collected unread.`
               );
             // The one verdict a second look can genuinely change, which is why it is the only one that
             // falls through to the settle below.
@@ -5039,7 +5199,7 @@ Frame saved to ${path}`, path);
   }
 
   // src/userscript/main.ts
-  var SCRIPT_VERSION = true ? "0.14.5" : "dev";
+  var SCRIPT_VERSION = true ? "0.14.6" : "dev";
   var CANVAS_TIMEOUT_MS = 6e4;
   var CANVAS_POLL_MS = 500;
   var MIN_GAME_CANVAS = { width: 800, height: 400 };
